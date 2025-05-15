@@ -61,7 +61,7 @@ void draw_circle(SDL_Renderer* ren, int cx, int cy, int r) {
     }
 }
 
-// Decode thread: keeps only 1 decoded frame queued
+// Decode thread: keeps only 1 decoded frame queued, uses hardware decoder if available
 int decode_thread(void* arg) {
     pthread_setname_np(pthread_self(), "decode");
     AVFormatContext* fmt_ctx = (AVFormatContext*)arg;
@@ -69,10 +69,24 @@ int decode_thread(void* arg) {
     if (vid_idx < 0) return -1;
 
     AVCodecParameters* ppar = fmt_ctx->streams[vid_idx]->codecpar;
-    const AVCodec* decoder = avcodec_find_decoder(ppar->codec_id);
+    // Try hardware-accelerated decoders in order
+    const char* hw_list[] = {"h264_omx", "h264_mmal", "h264_v4l2m2m", nullptr};
+    const AVCodec* decoder = nullptr;
+    for (int i = 0; hw_list[i]; ++i) {
+        decoder = avcodec_find_decoder_by_name(hw_list[i]);
+        if (decoder) break;
+    }
+    if (!decoder) {
+        decoder = avcodec_find_decoder(ppar->codec_id);
+    }
+
     AVCodecContext* dec_ctx = avcodec_alloc_context3(decoder);
     avcodec_parameters_to_context(dec_ctx, ppar);
-    avcodec_open2(dec_ctx, decoder, nullptr);
+    dec_ctx->thread_count = 1;  // single-threaded decode
+    if (avcodec_open2(dec_ctx, decoder, nullptr) < 0) {
+        fprintf(stderr, "Failed to open codec\n");
+        return -1;
+    }
 
     AVPacket* pkt = av_packet_alloc();
     AVFrame* frame = av_frame_alloc();
@@ -92,6 +106,7 @@ int decode_thread(void* arg) {
         if (pkt->stream_index == vid_idx) {
             if (avcodec_send_packet(dec_ctx, pkt) == 0) {
                 while (avcodec_receive_frame(dec_ctx, frame) == 0) {
+                    // Convert to YUV420P for SDL
                     sws_scale(sws, frame->data, frame->linesize,
                               0, dec_ctx->height,
                               yuv->data, yuv->linesize);
@@ -232,7 +247,6 @@ int main(int argc, char* argv[]) {
                 av_freep(&f->data[0]); av_frame_free(&f);
             }
         } else {
-            // sleep until next frame to reduce CPU usage
             Uint32 sleep_ms = (last_time + frame_delay > now) ? (last_time + frame_delay - now) : 0;
             SDL_Delay(sleep_ms);
         }
