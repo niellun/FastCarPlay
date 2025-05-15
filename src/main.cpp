@@ -9,23 +9,24 @@
 
 // Window state
 bool fullscreen = false;
-GLFWwindow* window;
+GLFWwindow *window;
 int windowedX, windowedY, windowedWidth = 800, windowedHeight = 600;
 volatile int frames = 0;
-const double targetFrameTime = 1.0 / 50.0;  // 50 FPS → 20 ms
+const double targetFrameTime = 1.0 / 50.0; // 50 FPS → 20 ms
 double lastTime = 0;
+bool Fkey = false;
 
 // Vertex data: 8 vertices, position + color
 GLfloat vertices[] = {
     // Position           // Color
-    -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f, // 0
-     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f, // 1
-     0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f, // 2
-    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f, // 3
-    -0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 1.0f, // 4
-     0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f, // 5
-     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 1.0f, // 6
-    -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 0.0f  // 7
+    -0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, // 0
+    0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  // 1
+    0.5f, 0.5f, -0.5f, 0.0f, 0.0f, 1.0f,   // 2
+    -0.5f, 0.5f, -0.5f, 1.0f, 1.0f, 0.0f,  // 3
+    -0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 1.0f,  // 4
+    0.5f, -0.5f, 0.5f, 0.0f, 1.0f, 1.0f,   // 5
+    0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f,    // 6
+    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.0f    // 7
 };
 
 // Indices must be 16-bit for GLES2
@@ -38,9 +39,11 @@ GLushort indices[] = {
     1, 5, 6, 6, 2, 1  // Right
 };
 
-void timer() {
+void timer()
+{
     int count = frames;
-    while (true) {
+    while (true)
+    {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         int newcount = frames;
         std::cout << "FPS: " << (newcount - count) << std::endl;
@@ -48,13 +51,15 @@ void timer() {
     }
 }
 
-GLuint compileShader(GLenum type, const char* source) {
+GLuint compileShader(GLenum type, const char *source)
+{
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, nullptr);
     glCompileShader(shader);
     GLint success;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
+    if (!success)
+    {
         char log[512];
         glGetShaderInfoLog(shader, 512, nullptr, log);
         std::cerr << "Shader Compilation Failed: " << log << std::endl;
@@ -62,7 +67,8 @@ GLuint compileShader(GLenum type, const char* source) {
     return shader;
 }
 
-GLuint createShaderProgram(const char* vs, const char* fs) {
+GLuint createShaderProgram(const char *vs, const char *fs)
+{
     GLuint vertex = compileShader(GL_VERTEX_SHADER, vs);
     GLuint fragment = compileShader(GL_FRAGMENT_SHADER, fs);
     GLuint program = glCreateProgram();
@@ -74,26 +80,38 @@ GLuint createShaderProgram(const char* vs, const char* fs) {
     return program;
 }
 
-void toggleFullscreen() {
+void toggleFullscreen()
+{
     fullscreen = !fullscreen;
 
-    if (fullscreen) {
+    std::cout << "Toggle fullscreen " << fullscreen<<std::endl;
+
+    if (fullscreen)
+    {
         glfwGetWindowPos(window, &windowedX, &windowedY);
         glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
 
-        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        std::cout << "Position " << windowedX << "," << windowedY << " " << windowedWidth << "x" << windowedHeight<<std::endl;
+
+        GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+        std::cout << "Monitor " << mode->width << "x" << mode->height << "@" << mode->refreshRate<< std::endl;
+
         glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-    } else {
+    }
+    else
+    {
         glfwSetWindowMonitor(window, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
     }
 }
 
-int main() {
+int main()
+{
     std::thread timerThread(timer);
     timerThread.detach();
 
-    if (!glfwInit()) {
+    if (!glfwInit())
+    {
         std::cerr << "Failed to initialize GLFW" << std::endl;
         return -1;
     }
@@ -102,7 +120,8 @@ int main() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
 
     window = glfwCreateWindow(windowedWidth, windowedHeight, "Rotating Cube GLES2", nullptr, nullptr);
-    if (!window) {
+    if (!window)
+    {
         std::cerr << "Window creation failed!" << std::endl;
         glfwTerminate();
         return -1;
@@ -111,7 +130,7 @@ int main() {
 
     glEnable(GL_DEPTH_TEST);
 
-    const char* vertexShader = R"(
+    const char *vertexShader = R"(
         precision mediump float;
         attribute vec3 position;
         attribute vec3 color;
@@ -124,7 +143,7 @@ int main() {
             gl_Position = projection * view * model * vec4(position, 1.0);
         })";
 
-    const char* fragmentShader = R"(
+    const char *fragmentShader = R"(
         precision mediump float;
         varying vec3 fragColor;
         void main() {
@@ -152,13 +171,20 @@ int main() {
     GLuint viewLoc = glGetUniformLocation(program, "view");
     GLuint projLoc = glGetUniformLocation(program, "projection");
 
-    lastTime = glfwGetTime();
-
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window))
+    {
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
         if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
-            toggleFullscreen();
+        {
+            if(!Fkey)
+            {
+                Fkey = true;
+                toggleFullscreen();
+            }
+        }
+        else
+            Fkey = false;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(program);
@@ -175,10 +201,10 @@ int main() {
         // Bind buffers and set attributes BEFORE drawing
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glEnableVertexAttribArray(posAttrib);
-        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
+        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid *)0);
 
         glEnableVertexAttribArray(colAttrib);
-        glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+        glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid *)(3 * sizeof(GLfloat)));
 
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 
@@ -187,11 +213,14 @@ int main() {
         double currentTime = glfwGetTime();
         double elapsed = currentTime - lastTime;
 
-        if (elapsed < targetFrameTime) {
+        if (elapsed < targetFrameTime)
+        {
             std::this_thread::sleep_for(
                 std::chrono::duration<double>(targetFrameTime - elapsed));
             lastTime += targetFrameTime;
-        } else {
+        }
+        else
+        {
             lastTime = currentTime;
         }
 
