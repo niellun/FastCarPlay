@@ -2,9 +2,16 @@
 CXX := g++
 SRC_DIR := ./src
 OUT_DIR := ./out
+RES_DIR := $(SRC_DIR)/resource
+GEN_DIR := $(SRC_DIR)/autogen
+BUILD_DIR := $(OUT_DIR)/$(BUILD_TYPE)
 
 # File lists
-SRCS := $(wildcard $(SRC_DIR)/*.cpp)
+SRCS := $(shell find $(SRC_DIR) -type f -name '*.cpp')
+OBJS=$(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRCS))
+
+RES := $(shell find $(RES_DIR) -type f ! -name '*.h' -name '*.*')
+RES_SRC := $(patsubst $(RES_DIR)/%,$(GEN_DIR)/%.cpp,$(RES))
 
 # Targets
 TARGET_NAME := app
@@ -14,32 +21,39 @@ TARGET_NAME := app
 
 all: debug
 
-LDOPTIONS := -lSDL2 -lavformat -lavcodec -lavutil -lswscale
-LDFLAGS := -static-libstdc++
+LDOPTIONS := -lSDL2 -lSDL2_ttf -lavformat -lavcodec -lavutil -lswscale
+LDFLAGS := 
 CXXCOMMON := -Wall
 
 debug: BUILD_TYPE := debug
 debug: CXXFLAGS := -g -O0 
 debug: TARGET := $(TARGET_NAME)-debug
-debug: build
+debug: prepare
 
 release: BUILD_TYPE := release
 release: CXXFLAGS := -O2
 release: TARGET := $(TARGET_NAME)
-release: build
+release: prepare
 
-build:
-	$(MAKE) BUILD_DIR=$(OUT_DIR)/$(BUILD_TYPE) OBJS="$(patsubst $(SRC_DIR)/%.cpp,$(OUT_DIR)/$(BUILD_TYPE)/%.o,$(SRCS))" TARGET=$(OUT_DIR)/$(TARGET) do_build
+prepare: $(RES_SRC)
+	$(MAKE) BUILD_TYPE=$(BUILD_TYPE) TARGET=$(OUT_DIR)/$(TARGET) build
 
-do_build: $(OBJS)
+build: $(TARGET)
+
+$(GEN_DIR)/%.cpp: $(RES_DIR)/%
+	@mkdir -p $(GEN_DIR)
+	xxd -i -n $(basename $(notdir $<)) $< > $@
+
+$(TARGET): $(OBJS)
 	@mkdir -p $(OUT_DIR)
 	$(CXX) $(LDFLAGS) $(OBJS) -o $(TARGET) $(LDOPTIONS)
 	@echo "Build complete: $(TARGET)"
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
-	@mkdir -p $(BUILD_DIR)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXCOMMON) $(CXXFLAGS) -c $< -o $@
 
 clean:
 	@rm -rf $(OUT_DIR)
+	@rm -rf $(GEN_DIR)
 	@echo "Clean complete"

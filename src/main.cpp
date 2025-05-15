@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h> // Include SDL2 library headers for graphics and event handling
 #include <pthread.h>  // Include POSIX threads library for multithreading
+#include "resource/background.h"
 
 extern "C"
 {
@@ -16,6 +17,9 @@ extern "C"
 #include <cstdio>             // Standard C I/O functions
 #include <vector>             // C++ dynamic array container
 #include <string>             // C++ string type
+
+#include <unistd.h>
+#include <iostream>
 
 #define MAX_CIRCLES 32      // Maximum number of circles drawn on the screen
 #define CIRCLE_LIFETIME 500 // Circle lifetime in milliseconds
@@ -45,20 +49,20 @@ static std::atomic<bool> global_quit(false);   // Atomic flag signaling applicat
 static int interrupt_cb(void *) { return global_quit.load(); }
 
 // Function to draw a circle on an SDL renderer using midpoint circle algorithm
-void draw_circle(SDL_Renderer *ren, int cx, int cy, int r)
+void draw_circle(SDL_Renderer *renderer, int cx, int cy, int r)
 {
     int x = r, y = 0, err = 0;
     while (x >= y)
     {
         // Draw symmetrical points for each octant of the circle
-        SDL_RenderDrawPoint(ren, cx + x, cy + y);
-        SDL_RenderDrawPoint(ren, cx + y, cy + x);
-        SDL_RenderDrawPoint(ren, cx - y, cy + x);
-        SDL_RenderDrawPoint(ren, cx - x, cy + y);
-        SDL_RenderDrawPoint(ren, cx - x, cy - y);
-        SDL_RenderDrawPoint(ren, cx - y, cy - x);
-        SDL_RenderDrawPoint(ren, cx + y, cy - x);
-        SDL_RenderDrawPoint(ren, cx + x, cy - y);
+        SDL_RenderDrawPoint(renderer, cx + x, cy + y);
+        SDL_RenderDrawPoint(renderer, cx + y, cy + x);
+        SDL_RenderDrawPoint(renderer, cx - y, cy + x);
+        SDL_RenderDrawPoint(renderer, cx - x, cy + y);
+        SDL_RenderDrawPoint(renderer, cx - x, cy - y);
+        SDL_RenderDrawPoint(renderer, cx - y, cy - x);
+        SDL_RenderDrawPoint(renderer, cx + y, cy - x);
+        SDL_RenderDrawPoint(renderer, cx + x, cy - y);
         // Update error term and coordinates to draw circle outline
         if (err <= 0)
         {
@@ -186,9 +190,107 @@ int decode_thread(void *arg)
     return 0;                       // Thread exit with success
 }
 
+bool loadBMPFromMemory(SDL_Renderer *renderer, SDL_Texture **texture, int *w, int *h)
+{
+    // Create SDL_RWops from memory buffer (no disk I/O)
+    SDL_RWops *rw = SDL_RWFromConstMem(background, background_len);
+    if (!rw)
+    {
+        std::cerr << "SDL_RWFromConstMem failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    // Load BMP surface from RWops (SDL takes ownership of rw if flag is 1)
+    SDL_Surface *surface = SDL_LoadBMP_RW(rw, 1);
+    if (!surface)
+    {
+        std::cerr << "SDL_LoadBMP_RW failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    // Output image dimensions for later centering
+    *w = surface->w;
+    *h = surface->h;
+
+    // Create hardware-accelerated texture from surface
+    *texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+    if (!*texture)
+    {
+        std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
 // Main function: program entry point
 int main(int argc, char **argv)
 {
+    SDL_Texture *texture = nullptr;
+    int img_w = 0;
+    int img_h = 0;
+
+    // Initialize SDL video subsystem
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0)
+    {
+        std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
+        return 1;
+    }
+
+    // Create SDL window centered on screen, 800x600 size
+    SDL_Window *window = SDL_CreateWindow("Fast Carplay",
+                                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600, SDL_WINDOW_RESIZABLE);
+    if (!window)
+    {
+        std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
+        SDL_Quit();
+        return 1;
+    }
+
+    // Create accelerated renderer for the window
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!renderer)
+    {
+        std::cerr << "SDL_CreateRenderer failed: " << SDL_GetError() << std::endl;
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Set draw color to black
+    SDL_RenderClear(renderer);                      // Clear renderer to black
+    SDL_RenderPresent(renderer);                    // Present initial blank frame
+
+    // Load texture from embedded image data
+    if (!loadBMPFromMemory(renderer, &texture, &img_w, &img_h))
+    {
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    // Get current window size to center image dynamically
+    int win_w, win_h;
+    SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
+
+    // Compute destination rectangle to center image
+    SDL_Rect dst = {
+        (win_w - img_w) / 2, // x: center horizontally
+        (win_h - img_h) / 2, // y: center vertically
+        img_w,               // width: original image width
+        img_h                // height: original image height
+    };
+
+    // Copy texture to renderer at centered position
+    SDL_RenderCopy(renderer, texture, nullptr, &dst);
+
+    // Present rendered frame on screen
+    SDL_RenderPresent(renderer);
+
+    sleep(5);
+
     pthread_setname_np(pthread_self(), "main"); // Set main thread name
     if (argc < 2)                               // Check if filename argument is provided
         return -1;
@@ -208,25 +310,23 @@ int main(int argc, char **argv)
     for (int i = 0; i < 2; ++i)
     {
         yuv_frames[i] = av_frame_alloc(); // Allocate AVFrame
-        av_image_alloc(yuv_frames[i]->data, yuv_frames[i]->linesize,
-                       width, height, AV_PIX_FMT_YUV420P, 1);                           // Allocate image buffers for YUV420P
-        memset(yuv_frames[i]->data[0], 0, yuv_frames[i]->linesize[0] * height);         // Set Y plane to black (0)
-        memset(yuv_frames[i]->data[1], 128, yuv_frames[i]->linesize[1] * (height / 2)); // Set U plane to 128 (neutral)
-        memset(yuv_frames[i]->data[2], 128, yuv_frames[i]->linesize[2] * (height / 2)); // Set V plane to 128 (neutral)
+        yuv_frames[i]->format = AV_PIX_FMT_YUV420P;
+        yuv_frames[i]->width = width;
+        yuv_frames[i]->height = height;
+        av_frame_get_buffer(yuv_frames[i], 32); // 32 = alignment
+        // av_image_alloc(yuv_frames[i]->data, yuv_frames[i]->linesize, width, height, AV_PIX_FMT_YUV420P, 1);                           // Allocate image buffers for YUV420P
+        // memset(yuv_frames[i]->data[0], 0, yuv_frames[i]->linesize[0] * height);         // Set Y plane to black (0)
+        // memset(yuv_frames[i]->data[1], 128, yuv_frames[i]->linesize[1] * (height / 2)); // Set U plane to 128 (neutral)
+        // memset(yuv_frames[i]->data[2], 128, yuv_frames[i]->linesize[2] * (height / 2)); // Set V plane to 128 (neutral)
     }
 
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER); // Initialize SDL video and timer subsystems
-    SDL_Window *win = SDL_CreateWindow("Player", SDL_WINDOWPOS_CENTERED,
-                                       SDL_WINDOWPOS_CENTERED,
-                                       width, height, SDL_WINDOW_RESIZABLE);   // Create SDL window
-    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED); // Create hardware accelerated renderer
-    SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_IYUV,            // Create texture for YUV frames
+    SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, // Create texture for YUV frames
                                          SDL_TEXTUREACCESS_STREAMING,
                                          width, height);
 
-    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255); // Set draw color to black
-    SDL_RenderClear(ren);                      // Clear renderer to black
-    SDL_RenderPresent(ren);                    // Present initial blank frame
+    // SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Set draw color to black
+    // SDL_RenderClear(renderer);                      // Clear renderer to black
+    // SDL_RenderPresent(renderer);                    // Present initial blank frame
 
     SDL_Thread *dt = SDL_CreateThread(decode_thread, "decode", fmt_ctx); // Start decoding thread
 
@@ -265,8 +365,8 @@ int main(int argc, char **argv)
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_f) // 'f' key pressed
             {
                 full = !full; // Toggle fullscreen mode
-                SDL_SetWindowFullscreen(win, full ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-                SDL_SetWindowBordered(win, full ? SDL_FALSE : SDL_TRUE);
+                SDL_SetWindowFullscreen(window, full ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                SDL_SetWindowBordered(window, full ? SDL_FALSE : SDL_TRUE);
             }
         }
 
@@ -290,8 +390,8 @@ int main(int argc, char **argv)
                 frame_ready = false; // Mark frame as consumed
                 buf_cv.notify_one(); // Notify decoding thread
             }
-            SDL_RenderClear(ren);                       // Clear renderer
-            SDL_RenderCopy(ren, tex, nullptr, nullptr); // Render video frame
+            SDL_RenderClear(renderer);                       // Clear renderer
+            SDL_RenderCopy(renderer, tex, nullptr, nullptr); // Render video frame
 
             // Draw all active circles with fading radius and alpha
             for (auto &c : circles)
@@ -304,14 +404,14 @@ int main(int argc, char **argv)
                     c.active = false;
                     continue;
                 }
-                float t = age / (float)CIRCLE_LIFETIME;               // Normalized lifetime [0..1]
-                int r = (int)(MAX_RADIUS * t);                        // Radius grows over lifetime
-                Uint8 a = (Uint8)(255 * (1 - t));                     // Alpha fades over lifetime
-                SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND); // Enable blending for transparency
-                SDL_SetRenderDrawColor(ren, 255, 0, 0, a);            // Set draw color red with alpha
-                draw_circle(ren, c.x, c.y, r);                        // Draw the circle
+                float t = age / (float)CIRCLE_LIFETIME;                    // Normalized lifetime [0..1]
+                int r = (int)(MAX_RADIUS * t);                             // Radius grows over lifetime
+                Uint8 a = (Uint8)(255 * (1 - t));                          // Alpha fades over lifetime
+                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND); // Enable blending for transparency
+                SDL_SetRenderDrawColor(renderer, 255, 0, 0, a);            // Set draw color red with alpha
+                draw_circle(renderer, c.x, c.y, r);                        // Draw the circle
             }
-            SDL_RenderPresent(ren); // Present final rendered frame
+            SDL_RenderPresent(renderer); // Present final rendered frame
         }
         else
         {
@@ -332,8 +432,8 @@ int main(int argc, char **argv)
 
     // Clean up SDL resources
     SDL_DestroyTexture(tex);
-    SDL_DestroyRenderer(ren);
-    SDL_DestroyWindow(win);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
     SDL_Quit();
 
     // Close input file and network cleanup
