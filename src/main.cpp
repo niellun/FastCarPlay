@@ -1,4 +1,4 @@
-#include <GL/glew.h>
+#include <GLES2/gl2.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <glm/glm.hpp>
@@ -12,7 +12,7 @@ bool fullscreen = false;
 GLFWwindow* window;
 int windowedX, windowedY, windowedWidth = 800, windowedHeight = 600;
 volatile int frames = 0;
-const double targetFrameTime = 1.0 / 60.0;  // 50 FPS → 20 ms
+const double targetFrameTime = 1.0 / 50.0;  // 50 FPS → 20 ms
 double lastTime = 0;
 
 // Vertex data: 8 vertices, position + color
@@ -28,17 +28,8 @@ GLfloat vertices[] = {
     -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 0.0f  // 7
 };
 
-void timer() {
-    int count = frames;
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));  // Wait for 1 second
-        int newcount = frames;
-        std::cout << "FPS: "<< (newcount-count) << std::endl;
-        count = newcount;
-    }
-}
-
-GLuint indices[] = {
+// Indices must be 16-bit for GLES2
+GLushort indices[] = {
     0, 1, 2, 2, 3, 0, // Front
     4, 5, 6, 6, 7, 4, // Back
     4, 5, 1, 1, 0, 4, // Bottom
@@ -46,6 +37,16 @@ GLuint indices[] = {
     4, 0, 3, 3, 7, 4, // Left
     1, 5, 6, 6, 2, 1  // Right
 };
+
+void timer() {
+    int count = frames;
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        int newcount = frames;
+        std::cout << "FPS: " << (newcount - count) << std::endl;
+        count = newcount;
+    }
+}
 
 GLuint compileShader(GLenum type, const char* source) {
     GLuint shader = glCreateShader(type);
@@ -89,37 +90,32 @@ void toggleFullscreen() {
 }
 
 int main() {
+    std::thread timerThread(timer);
+    timerThread.detach();
 
-    std::thread timerThread(timer);  // Create a thread to run the timer
-    timerThread.detach();  // Detach the thread so it runs independently
+    if (!glfwInit()) {
+        std::cerr << "Failed to initialize GLFW" << std::endl;
+        return -1;
+    }
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
 
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    window = glfwCreateWindow(windowedWidth, windowedHeight, "Rotating Cube", nullptr, nullptr);
+    window = glfwCreateWindow(windowedWidth, windowedHeight, "Rotating Cube GLES2", nullptr, nullptr);
     if (!window) {
         std::cerr << "Window creation failed!" << std::endl;
         glfwTerminate();
         return -1;
     }
     glfwMakeContextCurrent(window);
-    //glfwSwapInterval(1);  // 1 enables V-Sync, 0 disables V-Sync (unlimited FPS)
-
-    glewExperimental = true;
-    if (glewInit() != GLEW_OK) {
-        std::cerr << "GLEW init failed!" << std::endl;
-        return -1;
-    }
 
     glEnable(GL_DEPTH_TEST);
 
     const char* vertexShader = R"(
-        #version 330 core
-        layout(location = 0) in vec3 position;
-        layout(location = 1) in vec3 color;
-        out vec3 fragColor;
+        precision mediump float;
+        attribute vec3 position;
+        attribute vec3 color;
+        varying vec3 fragColor;
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 projection;
@@ -129,34 +125,34 @@ int main() {
         })";
 
     const char* fragmentShader = R"(
-        #version 330 core
-        in vec3 fragColor;
-        out vec4 outColor;
+        precision mediump float;
+        varying vec3 fragColor;
         void main() {
-            outColor = vec4(fragColor, 1.0);
+            gl_FragColor = vec4(fragColor, 1.0);
         })";
 
     GLuint program = createShaderProgram(vertexShader, fragmentShader);
 
-    GLuint VAO, VBO, EBO;
-    glGenVertexArrays(1, &VAO);
+    GLuint VBO, EBO;
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
 
-    glBindVertexArray(VAO);
+    // Upload vertex data
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    // Upload index data
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
+
+    GLint posAttrib = glGetAttribLocation(program, "position");
+    GLint colAttrib = glGetAttribLocation(program, "color");
 
     GLuint modelLoc = glGetUniformLocation(program, "model");
     GLuint viewLoc = glGetUniformLocation(program, "view");
     GLuint projLoc = glGetUniformLocation(program, "projection");
+
+    lastTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -167,42 +163,48 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(program);
 
-        float time = glfwGetTime();
-        glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(frames * 0.3f), glm::vec3(1.0f, 1.0f, 0.0f));
+        float angle = frames * 0.3f;
+        glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(angle), glm::vec3(1.0f, 1.0f, 0.0f));
         glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -3));
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), 800.f / 600.f, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)windowedWidth / windowedHeight, 0.1f, 100.0f);
 
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-        glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        // Bind buffers and set attributes BEFORE drawing
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glEnableVertexAttribArray(posAttrib);
+        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
+
+        glEnableVertexAttribArray(colAttrib);
+        glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+
+        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
 
         double currentTime = glfwGetTime();
         double elapsed = currentTime - lastTime;
 
         if (elapsed < targetFrameTime) {
-            // Sleep just enough to reach 20 ms total
             std::this_thread::sleep_for(
                 std::chrono::duration<double>(targetFrameTime - elapsed));
             lastTime += targetFrameTime;
-        }
-        else if (elapsed > targetFrameTime)
-        {
+        } else {
             lastTime = currentTime;
         }
 
-
         glfwSwapBuffers(window);
         glfwPollEvents();
+
         frames++;
     }
 
-    glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
     glDeleteProgram(program);
+
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
