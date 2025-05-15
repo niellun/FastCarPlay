@@ -1,194 +1,209 @@
-#include <SDL2/SDL.h>
-#include <GLES2/gl2.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+// src/main.cpp
+
 #include <iostream>
-#include <thread>
-#include <chrono>
+#include <vector>
+#include <SDL2/SDL.h>
 
-bool fullscreen = false;
-SDL_Window* window = nullptr;
-SDL_GLContext glContext = nullptr;
-int windowedWidth = 800, windowedHeight = 600;
-int frames = 0;
-const double targetFrameTime = 1.0 / 50.0;
-double lastTime = 0;
-bool Fkey = false;
-
-// Cube vertex and index data
-GLfloat vertices[] = {
-    -0.5f, -0.5f, -0.5f, 1, 0, 0,  // 0
-     0.5f, -0.5f, -0.5f, 0, 1, 0,  // 1
-     0.5f,  0.5f, -0.5f, 0, 0, 1,  // 2
-    -0.5f,  0.5f, -0.5f, 1, 1, 0,  // 3
-    -0.5f, -0.5f,  0.5f, 1, 0, 1,  // 4
-     0.5f, -0.5f,  0.5f, 0, 1, 1,  // 5
-     0.5f,  0.5f,  0.5f, 1, 1, 1,  // 6
-    -0.5f,  0.5f,  0.5f, 0, 0, 0   // 7
-};
-
-GLushort indices[] = {
-    0,1,2, 2,3,0,  4,5,6, 6,7,4,
-    4,5,1, 1,0,4,  3,2,6, 6,7,3,
-    4,0,3, 3,7,4,  1,5,6, 6,2,1
-};
-
-void timer() {
-    int count = frames;
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        int newcount = frames;
-        std::cout << "FPS: " << (newcount - count) << std::endl;
-        count = newcount;
-    }
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/imgutils.h>
+#include <libavutil/opt.h>
+#include <libavutil/samplefmt.h>
+#include <libavutil/channel_layout.h>
+#include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 }
 
-GLuint compileShader(GLenum type, const char* src) {
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, nullptr);
-    glCompileShader(shader);
-    GLint success;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        char log[512];
-        glGetShaderInfoLog(shader, 512, nullptr, log);
-        std::cerr << "Shader error: " << log << std::endl;
-    }
-    return shader;
-}
+#define SDL_AUDIO_BUFFER_SIZE 1024
 
-GLuint createShaderProgram(const char* vs, const char* fs) {
-    GLuint vertex = compileShader(GL_VERTEX_SHADER, vs);
-    GLuint fragment = compileShader(GL_FRAGMENT_SHADER, fs);
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vertex);
-    glAttachShader(program, fragment);
-    glLinkProgram(program);
-    glDeleteShader(vertex);
-    glDeleteShader(fragment);
-    return program;
-}
+int audio_decode_frame(AVCodecContext *aCtx, uint8_t *out_buf, int buf_size, AVPacket *pkt, AVFrame *frame) {
+    if (avcodec_send_packet(aCtx, pkt) < 0) return 0;
+    if (avcodec_receive_frame(aCtx, frame) < 0) return 0;
 
-void toggleFullscreen() {
-    fullscreen = !fullscreen;
-    SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-}
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    int64_t in_ch_layout = aCtx->channel_layout;
+    #pragma GCC diagnostic pop
 
-int main() {
-    std::thread(timer).detach();
+    SwrContext *swr = swr_alloc();
+    av_opt_set_int(swr, "in_channel_layout",  in_ch_layout,           0);
+    av_opt_set_int(swr, "in_sample_rate",     aCtx->sample_rate,      0);
+    av_opt_set_sample_fmt(swr, "in_sample_fmt", aCtx->sample_fmt,       0);
+    av_opt_set_int(swr, "out_channel_layout", AV_CH_LAYOUT_STEREO,    0);
+    av_opt_set_int(swr, "out_sample_rate",    aCtx->sample_rate,      0);
+    av_opt_set_sample_fmt(swr, "out_sample_fmt", AV_SAMPLE_FMT_S16,    0);
 
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << "SDL init failed\n";
-        return -1;
+    if (swr_init(swr) < 0) {
+        swr_free(&swr);
+        return 0;
     }
 
-    // GLES2 context setup
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    int converted = swr_convert(
+        swr,
+        &out_buf,
+        buf_size / 2,
+        (const uint8_t**)frame->data,
+        frame->nb_samples
+    ) * 2;
+    swr_free(&swr);
+    return converted;
+}
 
-    window = SDL_CreateWindow("Cube SDL2 + GLES2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                              windowedWidth, windowedHeight, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-    if (!window) {
-        std::cerr << "Window creation failed!\n";
-        return -1;
-    }
+AVCodecContext* open_video_decoder(AVFormatContext* fmtCtx, int vidStream) {
+    // prepare codec context
+    AVCodecContext *vCtx = avcodec_alloc_context3(nullptr);
+    avcodec_parameters_to_context(vCtx, fmtCtx->streams[vidStream]->codecpar);
 
-    glContext = SDL_GL_CreateContext(window);
-    SDL_GL_SetSwapInterval(0);  // No vsync
+    // list of hw accel names to try
+    std::vector<const char*> hw_decoders = {
+        "h264_v4l2m2m",
+        "h264_mmal",
+        "h264_omx",
+        nullptr
+    };
 
-    glEnable(GL_DEPTH_TEST);
-
-    const char* vertexShader = R"(
-        precision mediump float;
-        attribute vec3 position;
-        attribute vec3 color;
-        varying vec3 fragColor;
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 projection;
-        void main() {
-            fragColor = color;
-            gl_Position = projection * view * model * vec4(position, 1.0);
-        })";
-
-    const char* fragmentShader = R"(
-        precision mediump float;
-        varying vec3 fragColor;
-        void main() {
-            gl_FragColor = vec4(fragColor, 1.0);
-        })";
-
-    GLuint program = createShaderProgram(vertexShader, fragmentShader);
-
-    GLuint VBO, EBO;
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    GLint posAttrib = glGetAttribLocation(program, "position");
-    GLint colAttrib = glGetAttribLocation(program, "color");
-    GLuint modelLoc = glGetUniformLocation(program, "model");
-    GLuint viewLoc = glGetUniformLocation(program, "view");
-    GLuint projLoc = glGetUniformLocation(program, "projection");
-
-    bool running = true;
-    SDL_Event event;
-
-    while (running) {
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) running = false;
-            if (event.type == SDL_KEYDOWN) {
-                if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
-                if (event.key.keysym.sym == SDLK_f && !Fkey) {
-                    Fkey = true;
-                    toggleFullscreen();
-                }
-            }
-            if (event.type == SDL_KEYUP && event.key.keysym.sym == SDLK_f) Fkey = false;
+    int ret;
+    const AVCodec *dec = nullptr;
+    for (auto name : hw_decoders) {
+        if (name) {
+            dec = avcodec_find_decoder_by_name(name);
+            if (!dec) continue;
+        } else {
+            // fallback to default software decoder for this codec id
+            dec = avcodec_find_decoder(vCtx->codec_id);
         }
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUseProgram(program);
-
-        float angle = frames * 0.3f;
-        glm::mat4 model = glm::rotate(glm::mat4(1), glm::radians(angle), glm::vec3(1, 1, 0));
-        glm::mat4 view = glm::translate(glm::mat4(1), glm::vec3(0, 0, -3));
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), windowedWidth / (float)windowedHeight, 0.1f, 100.0f);
-
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glEnableVertexAttribArray(posAttrib);
-        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
-        glEnableVertexAttribArray(colAttrib);
-        glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_SHORT, 0);
-
-        double currentTime = SDL_GetTicks() / 1000.0;
-        double elapsed = currentTime - lastTime;
-        if (elapsed < targetFrameTime)
-            std::this_thread::sleep_for(std::chrono::duration<double>(targetFrameTime - elapsed));
-
-        lastTime = currentTime;
-        SDL_GL_SwapWindow(window);
-        frames++;
+        ret = avcodec_open2(vCtx, dec, nullptr);
+        if (ret == 0) {
+            std::cout << "Opened video decoder: "
+                      << (name ? name : dec->name)
+                      << std::endl;
+            return vCtx;
+        }
     }
 
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
-    glDeleteProgram(program);
-    SDL_GL_DeleteContext(glContext);
-    SDL_DestroyWindow(window);
+    // if we get here, nothing opened cleanly
+    avcodec_free_context(&vCtx);
+    return nullptr;
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <video_file>\n";
+        return -1;
+    }
+
+    av_log_set_level(AV_LOG_QUIET);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER);
+
+    // open media
+    AVFormatContext *fmtCtx = nullptr;
+    if (avformat_open_input(&fmtCtx, argv[1], nullptr, nullptr) < 0) {
+        std::cerr << "Could not open input file\n";
+        return -1;
+    }
+    if (avformat_find_stream_info(fmtCtx, nullptr) < 0) {
+        std::cerr << "Could not find streams\n";
+        return -1;
+    }
+
+    // find streams
+    int vidStream = -1, audStream = -1;
+    for (unsigned i = 0; i < fmtCtx->nb_streams; i++) {
+        AVMediaType t = fmtCtx->streams[i]->codecpar->codec_type;
+        if (t == AVMEDIA_TYPE_VIDEO && vidStream < 0) vidStream = i;
+        if (t == AVMEDIA_TYPE_AUDIO && audStream < 0) audStream = i;
+    }
+    if (vidStream < 0 || audStream < 0) {
+        std::cerr << "Missing video or audio stream\n";
+        return -1;
+    }
+
+    // video decoder (with fallback)
+    AVCodecContext *vCtx = open_video_decoder(fmtCtx, vidStream);
+    if (!vCtx) {
+        std::cerr << "Failed to open any video decoder\n";
+        return -1;
+    }
+
+    // audio decoder
+    AVCodecContext *aCtx = avcodec_alloc_context3(nullptr);
+    avcodec_parameters_to_context(aCtx, fmtCtx->streams[audStream]->codecpar);
+    const AVCodec *aDec = avcodec_find_decoder(aCtx->codec_id);
+    if (!aDec || avcodec_open2(aCtx, aDec, nullptr) < 0) {
+        std::cerr << "Failed to open audio decoder\n";
+        return -1;
+    }
+
+    // SDL window / renderer / texture
+    SDL_Window   *win      = SDL_CreateWindow(
+        "SDL2 FFmpeg Player",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        vCtx->width, vCtx->height, 0
+    );
+    SDL_Renderer *renderer = SDL_CreateRenderer(win, -1, 0);
+    SDL_Texture  *texture  = SDL_CreateTexture(
+        renderer, SDL_PIXELFORMAT_YV12, SDL_TEXTUREACCESS_STREAMING,
+        vCtx->width, vCtx->height
+    );
+
+    // SDL audio
+    SDL_AudioSpec want = {};
+    want.freq     = aCtx->sample_rate;
+    want.format   = AUDIO_S16SYS;
+    want.channels = 2;
+    want.samples  = SDL_AUDIO_BUFFER_SIZE;
+    want.callback = nullptr;
+    if (SDL_OpenAudio(&want, nullptr) < 0) {
+        std::cerr << "SDL_OpenAudio error: " << SDL_GetError() << "\n";
+        return -1;
+    }
+    SDL_PauseAudio(0);
+
+    // frames, packet, and scaler
+    AVFrame *vFrame = av_frame_alloc();
+    AVFrame *aFrame = av_frame_alloc();
+    AVPacket pkt;
+    SwsContext *sws = sws_getContext(
+        vCtx->width, vCtx->height, vCtx->pix_fmt,
+        vCtx->width, vCtx->height, AV_PIX_FMT_YUV420P,
+        SWS_BILINEAR, nullptr, nullptr, nullptr
+    );
+
+    // main loop
+    while (av_read_frame(fmtCtx, &pkt) >= 0) {
+        if (pkt.stream_index == vidStream) {
+            if (!avcodec_send_packet(vCtx, &pkt) &&
+                !avcodec_receive_frame(vCtx, vFrame))
+            {
+                SDL_UpdateYUVTexture(
+                    texture, nullptr,
+                    vFrame->data[0], vFrame->linesize[0],
+                    vFrame->data[1], vFrame->linesize[1],
+                    vFrame->data[2], vFrame->linesize[2]
+                );
+                SDL_RenderClear(renderer);
+                SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+                SDL_RenderPresent(renderer);
+            }
+        }
+        else if (pkt.stream_index == audStream) {
+            uint8_t buf[192000];
+            int len = audio_decode_frame(aCtx, buf, sizeof(buf), &pkt, aFrame);
+            if (len > 0) SDL_QueueAudio(0, buf, len);
+        }
+        av_packet_unref(&pkt);
+        SDL_Delay(10);
+    }
+
+    // cleanup
+    sws_freeContext(sws);
+    av_frame_free(&vFrame);
+    av_frame_free(&aFrame);
+    avcodec_free_context(&vCtx);
+    avcodec_free_context(&aCtx);
+    avformat_close_input(&fmtCtx);
     SDL_Quit();
     return 0;
 }
