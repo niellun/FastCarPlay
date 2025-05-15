@@ -14,7 +14,7 @@ TARGET_NAME := app
 
 all: debug
 
-LDOPTIONS := -lglfw -lGLEW -lGL -lm -lSDL2 -lGLESv2 -pthread -lavformat -lavcodec -lavutil -lswscale -lswresample
+LDOPTIONS := -lSDL2 -lavformat -lavcodec -lavutil -lswscale
 LDFLAGS := -static-libstdc++
 CXXCOMMON := -Wall
 
