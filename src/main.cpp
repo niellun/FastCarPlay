@@ -1,6 +1,8 @@
 #include <SDL2/SDL.h> // Include SDL2 library headers for graphics and event handling
-#include <pthread.h>  // Include POSIX threads library for multithreading
+#include <SDL2/SDL_ttf.h>
+#include <pthread.h> // Include POSIX threads library for multithreading
 #include "resource/background.h"
+#include "resource/sst_regular.h"
 
 extern "C"
 {
@@ -190,14 +192,63 @@ int decode_thread(void *arg)
     return 0;                       // Thread exit with success
 }
 
-bool loadBMPFromMemory(SDL_Renderer *renderer, SDL_Texture **texture, int *w, int *h)
+TTF_Font *LoadEmbeddedFont(int ptsize)
+{
+    SDL_RWops *font_rw = SDL_RWFromConstMem(sst_regular, sst_regular_len);
+    if (!font_rw)
+    {
+        SDL_Log("Failed to create RWops from font: %s", SDL_GetError());
+        return nullptr;
+    }
+
+    TTF_Font *font = TTF_OpenFontRW(font_rw, 1, ptsize); // 1 = SDL_ttf will free RWops
+    if (!font)
+    {
+        SDL_Log("Failed to load font from RWops: %s", TTF_GetError());
+    }
+
+    return font;
+}
+
+void DrawText(SDL_Renderer *renderer, TTF_Font *font, const char *text)
+{
+    SDL_Color white = {255, 255, 255, 255};
+
+    SDL_Surface *textSurface = TTF_RenderText_Blended(font, text, white);
+    if (!textSurface)
+    {
+        SDL_Log("Failed to create text surface: %s", TTF_GetError());
+        return;
+    }
+
+    SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    SDL_FreeSurface(textSurface);
+
+    int textW, textH;
+    SDL_QueryTexture(textTexture, nullptr, nullptr, &textW, &textH);
+
+    int win_w, win_h;
+    SDL_GetRendererOutputSize(renderer, &win_w, &win_h);
+
+    // Center text
+    SDL_Rect dstRect = {
+        (win_w - textW) / 2,
+        int((win_h - textH) * 0.9),
+        textW,
+        textH};
+
+    SDL_RenderCopy(renderer, textTexture, nullptr, &dstRect);
+    SDL_DestroyTexture(textTexture);
+}
+
+SDL_Texture *loadBMPFromMemory(SDL_Renderer *renderer, int *w, int *h)
 {
     // Create SDL_RWops from memory buffer (no disk I/O)
     SDL_RWops *rw = SDL_RWFromConstMem(background, background_len);
     if (!rw)
     {
         std::cerr << "SDL_RWFromConstMem failed: " << SDL_GetError() << std::endl;
-        return false;
+        return nullptr;
     }
 
     // Load BMP surface from RWops (SDL takes ownership of rw if flag is 1)
@@ -205,7 +256,7 @@ bool loadBMPFromMemory(SDL_Renderer *renderer, SDL_Texture **texture, int *w, in
     if (!surface)
     {
         std::cerr << "SDL_LoadBMP_RW failed: " << SDL_GetError() << std::endl;
-        return false;
+        return nullptr;
     }
 
     // Output image dimensions for later centering
@@ -213,21 +264,19 @@ bool loadBMPFromMemory(SDL_Renderer *renderer, SDL_Texture **texture, int *w, in
     *h = surface->h;
 
     // Create hardware-accelerated texture from surface
-    *texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
-    if (!*texture)
+    if (!texture)
     {
         std::cerr << "SDL_CreateTextureFromSurface failed: " << SDL_GetError() << std::endl;
-        return false;
     }
 
-    return true;
+    return texture;
 }
 
 // Main function: program entry point
 int main(int argc, char **argv)
 {
-    SDL_Texture *texture = nullptr;
     int img_w = 0;
     int img_h = 0;
 
@@ -238,9 +287,16 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    SDL_DisplayMode displayMode;
+    if (SDL_GetCurrentDisplayMode(0, &displayMode) != 0)
+    {
+        SDL_Log("SDL_GetCurrentDisplayMode failed: %s", SDL_GetError());
+        // Handle error or set default size
+    }
+
     // Create SDL window centered on screen, 800x600 size
     SDL_Window *window = SDL_CreateWindow("Fast Carplay",
-                                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600, SDL_WINDOW_RESIZABLE);
+                                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, displayMode.w, displayMode.h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
     if (!window)
     {
         std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
@@ -262,8 +318,25 @@ int main(int argc, char **argv)
     SDL_RenderClear(renderer);                      // Clear renderer to black
     SDL_RenderPresent(renderer);                    // Present initial blank frame
 
+    // init SDL_ttf once
+    if (TTF_Init() != 0)
+    {
+        std::cerr << "TTF_Init failed: " << TTF_GetError() << std::endl;
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    // open font from memory (do not close fontRW, TTF_OpenFontRW will handle it if final arg is 1)
+    TTF_Font *font = LoadEmbeddedFont(30);
+    DrawText(renderer, font, "Loading");
+
+    SDL_RenderPresent(renderer); // Present initial blank frame
+
     // Load texture from embedded image data
-    if (!loadBMPFromMemory(renderer, &texture, &img_w, &img_h))
+    SDL_Texture *texture = loadBMPFromMemory(renderer, &img_w, &img_h);
+    if (!texture)
     {
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
@@ -284,12 +357,19 @@ int main(int argc, char **argv)
     };
 
     // Copy texture to renderer at centered position
+    SDL_RenderClear(renderer);                      // Clear renderer to black
     SDL_RenderCopy(renderer, texture, nullptr, &dst);
+    DrawText(renderer, font, "Initialising");
 
     // Present rendered frame on screen
-    SDL_RenderPresent(renderer);
 
-    sleep(5);
+    SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
+    SDL_ShowWindow(window);
+    SDL_RenderPresent(renderer);
+    bool full = true;            // Flag for fullscreen toggle
+
+
+    sleep(4);
 
     pthread_setname_np(pthread_self(), "main"); // Set main thread name
     if (argc < 2)                               // Check if filename argument is provided
@@ -335,7 +415,7 @@ int main(int argc, char **argv)
     Uint32 frame_delay = (Uint32)(1000.0 / av_q2d(fmt_ctx->streams[vid_idx]->avg_frame_rate));
     Uint32 last = SDL_GetTicks(); // Record last frame display time
     bool quit = false;            // Flag to signal quit event
-    bool full = false;            // Flag for fullscreen toggle
+
 
     // Main event and rendering loop
     while (!quit)
