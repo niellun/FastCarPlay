@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <pthread.h>
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -15,7 +16,7 @@ extern "C" {
 
 #define MAX_CIRCLES 32
 #define CIRCLE_LIFETIME 500   // ms, faster animation
-#define MAX_RADIUS 60        // maximum radius
+#define MAX_RADIUS 60         // maximum radius
 
 struct Circle {
     int x, y;
@@ -35,8 +36,34 @@ static int interrupt_cb(void* ctx) {
     return global_quit.load() ? 1 : 0;
 }
 
+// Draw circle outline using midpoint circle algorithm
+void draw_circle(SDL_Renderer* ren, int cx, int cy, int r) {
+    int x = r;
+    int y = 0;
+    int err = 0;
+    while (x >= y) {
+        SDL_RenderDrawPoint(ren, cx + x, cy + y);
+        SDL_RenderDrawPoint(ren, cx + y, cy + x);
+        SDL_RenderDrawPoint(ren, cx - y, cy + x);
+        SDL_RenderDrawPoint(ren, cx - x, cy + y);
+        SDL_RenderDrawPoint(ren, cx - x, cy - y);
+        SDL_RenderDrawPoint(ren, cx - y, cy - x);
+        SDL_RenderDrawPoint(ren, cx + y, cy - x);
+        SDL_RenderDrawPoint(ren, cx + x, cy - y);
+        if (err <= 0) {
+            y++;
+            err += 2*y + 1;
+        }
+        if (err > 0) {
+            x--;
+            err -= 2*x + 1;
+        }
+    }
+}
+
 // Decode thread: keeps only 1 decoded frame queued
 int decode_thread(void* arg) {
+    pthread_setname_np(pthread_self(), "decode");
     AVFormatContext* fmt_ctx = (AVFormatContext*)arg;
     int vid_idx = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     if (vid_idx < 0) return -1;
@@ -104,32 +131,8 @@ int decode_thread(void* arg) {
     return 0;
 }
 
-// Draw circle outline using midpoint circle algorithm
-void draw_circle(SDL_Renderer* ren, int cx, int cy, int r) {
-    int x = r;
-    int y = 0;
-    int err = 0;
-    while (x >= y) {
-        SDL_RenderDrawPoint(ren, cx + x, cy + y);
-        SDL_RenderDrawPoint(ren, cx + y, cy + x);
-        SDL_RenderDrawPoint(ren, cx - y, cy + x);
-        SDL_RenderDrawPoint(ren, cx - x, cy + y);
-        SDL_RenderDrawPoint(ren, cx - x, cy - y);
-        SDL_RenderDrawPoint(ren, cx - y, cy - x);
-        SDL_RenderDrawPoint(ren, cx + y, cy - x);
-        SDL_RenderDrawPoint(ren, cx + x, cy - y);
-        if (err <= 0) {
-            y++;
-            err += 2*y + 1;
-        }
-        if (err > 0) {
-            x--;
-            err -= 2*x + 1;
-        }
-    }
-}
-
 int main(int argc, char* argv[]) {
+    pthread_setname_np(pthread_self(), "main");
     if (argc < 2) return -1;
     const char* filename = argv[1];
 
@@ -145,7 +148,8 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     SDL_Window* win = SDL_CreateWindow("Player", SDL_WINDOWPOS_CENTERED,
                                        SDL_WINDOWPOS_CENTERED,
-                                       ppar->width, ppar->height, SDL_WINDOW_RESIZABLE);
+                                       ppar->width, ppar->height,
+                                       SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
     SDL_Texture* texture = SDL_CreateTexture(renderer,
                                              SDL_PIXELFORMAT_IYUV,
@@ -153,7 +157,6 @@ int main(int argc, char* argv[]) {
                                              ppar->width, ppar->height);
 
     bool is_fullscreen = false;
-    // Start decode thread
     SDL_Thread* dt = SDL_CreateThread(decode_thread, "decode", fmt_ctx);
 
     Circle circles[MAX_CIRCLES] = {};
@@ -229,7 +232,9 @@ int main(int argc, char* argv[]) {
                 av_freep(&f->data[0]); av_frame_free(&f);
             }
         } else {
-            SDL_Delay(1);
+            // sleep until next frame to reduce CPU usage
+            Uint32 sleep_ms = (last_time + frame_delay > now) ? (last_time + frame_delay - now) : 0;
+            SDL_Delay(sleep_ms);
         }
     }
 
