@@ -128,6 +128,13 @@ int main()
     }
     glfwMakeContextCurrent(window);
 
+    int fbWidth, fbHeight;
+    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+    glViewport(0, 0, fbWidth, fbHeight);
+
+    // Optionally disable vsync here for testing
+    glfwSwapInterval(0);
+
     glEnable(GL_DEPTH_TEST);
 
     const char *vertexShader = R"(
