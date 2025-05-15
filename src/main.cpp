@@ -1,7 +1,8 @@
 #include <SDL2/SDL.h>
 #include <pthread.h>
 
-extern "C" {
+extern "C"
+{
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
@@ -12,15 +13,23 @@ extern "C" {
 #include <mutex>
 #include <condition_variable>
 #include <cmath>
+#include <cstdio>
+#include <vector>
+#include <string>
 
 #define MAX_CIRCLES 32
-#define CIRCLE_LIFETIME 500   // ms
-#define MAX_RADIUS 60         // px
+#define CIRCLE_LIFETIME 500 // ms
+#define MAX_RADIUS 60       // px
 
-struct Circle { int x, y; Uint32 start_time; bool active; };
+struct Circle
+{
+    int x, y;
+    Uint32 start_time;
+    bool active;
+};
 
 // Double-buffered frames
-static AVFrame *yuv_frames[2] = { nullptr, nullptr };
+static AVFrame *yuv_frames[2] = {nullptr, nullptr};
 static int width, height;
 
 // Sync primitives
@@ -31,11 +40,13 @@ static std::atomic<int> decoded_idx(0);
 static std::atomic<bool> decoding_done(false);
 static std::atomic<bool> global_quit(false);
 
-static int interrupt_cb(void*) { return global_quit.load(); }
+static int interrupt_cb(void *) { return global_quit.load(); }
 
-void draw_circle(SDL_Renderer* ren, int cx, int cy, int r) {
+void draw_circle(SDL_Renderer *ren, int cx, int cy, int r)
+{
     int x = r, y = 0, err = 0;
-    while (x >= y) {
+    while (x >= y)
+    {
         SDL_RenderDrawPoint(ren, cx + x, cy + y);
         SDL_RenderDrawPoint(ren, cx + y, cy + x);
         SDL_RenderDrawPoint(ren, cx - y, cy + x);
@@ -44,39 +55,99 @@ void draw_circle(SDL_Renderer* ren, int cx, int cy, int r) {
         SDL_RenderDrawPoint(ren, cx - y, cy - x);
         SDL_RenderDrawPoint(ren, cx + y, cy - x);
         SDL_RenderDrawPoint(ren, cx + x, cy - y);
-        if (err <= 0) { y++; err += 2*y + 1; }
-        if (err > 0)  { x--; err -= 2*x + 1; }
+        if (err <= 0)
+        {
+            y++;
+            err += 2 * y + 1;
+        }
+        if (err > 0)
+        {
+            x--;
+            err -= 2 * x + 1;
+        }
     }
 }
 
-int decode_thread(void* arg) {
+static std::vector<std::string> get_hw_codec_names(AVCodecID codec_id)
+{
+    std::vector<std::string> hw_names;
+    void *iter = nullptr;
+    const AVCodec *codec = nullptr;
+
+    while ((codec = av_codec_iterate(&iter)))
+    {
+        if (!av_codec_is_decoder(codec))
+            continue;
+        if (codec->id != codec_id)
+            continue;
+        if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE))
+            continue;
+        // Add codec name to the list
+        hw_names.push_back(codec->name);
+    }
+    return hw_names;
+}
+
+int decode_thread(void *arg)
+{
     pthread_setname_np(pthread_self(), "decode");
-    AVFormatContext *fmt_ctx = (AVFormatContext*)arg;
+    AVFormatContext *fmt_ctx = (AVFormatContext *)arg;
     int vid_idx = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-
     AVCodecParameters *ppar = fmt_ctx->streams[vid_idx]->codecpar;
-    const char* hw_list[] = {"h264_omx","h264_mmal","h264_v4l2m2m", nullptr};
-    const AVCodec* dec = nullptr;
-    for (int i = 0; hw_list[i]; ++i) if ((dec = avcodec_find_decoder_by_name(hw_list[i]))) break;
-    if (!dec) dec = avcodec_find_decoder(ppar->codec_id);
 
-    AVCodecContext *dec_ctx = avcodec_alloc_context3(dec);
-    avcodec_parameters_to_context(dec_ctx, ppar);
-    dec_ctx->thread_count = 1;
-    avcodec_open2(dec_ctx, dec, nullptr);
+    // Dynamically try all registered hardware-capable decoders
+    AVCodecContext *dec_ctx = nullptr;
+    const AVCodec *codec = nullptr;
+
+    // Try hardware decoders first
+    std::vector<std::string> hw_codec_names = get_hw_codec_names(ppar->codec_id);
+    for (const auto &hw_name : hw_codec_names)
+    {
+        codec = avcodec_find_decoder_by_name(hw_name.c_str());
+        if (!codec)
+            continue;
+        dec_ctx = avcodec_alloc_context3(codec);
+        if (!dec_ctx)
+            continue;
+        avcodec_parameters_to_context(dec_ctx, ppar);
+        if (avcodec_open2(dec_ctx, codec, nullptr) >= 0)
+        {
+            fprintf(stderr, "Using HW decoder: %s\n", codec->name);
+            break;
+        }
+        avcodec_free_context(&dec_ctx);
+        dec_ctx = nullptr;
+    }
+
+    // Fallback to software decoder
+    if (!dec_ctx)
+    {
+        codec = avcodec_find_decoder(ppar->codec_id);
+        dec_ctx = avcodec_alloc_context3(codec);
+        avcodec_parameters_to_context(dec_ctx, ppar);
+        if (avcodec_open2(dec_ctx, codec, nullptr) < 0)
+        {
+            fprintf(stderr, "Failed to open codec: %s\n", codec->name);
+            return -1;
+        }
+        fprintf(stderr, "Using software decoder: %s\n", codec->name);
+    }
 
     AVPacket *pkt = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
     struct SwsContext *sws = sws_getContext(
         width, height, dec_ctx->pix_fmt,
         width, height, AV_PIX_FMT_YUV420P,
-        SWS_BILINEAR, nullptr, nullptr, nullptr
-    );
+        SWS_BILINEAR, nullptr, nullptr, nullptr);
 
-    while (!global_quit.load() && av_read_frame(fmt_ctx, pkt) >= 0) {
-        if (pkt->stream_index == vid_idx) {
-            if (!avcodec_send_packet(dec_ctx, pkt)) {
-                while (!avcodec_receive_frame(dec_ctx, frame)) {
+    while (!global_quit.load() && av_read_frame(fmt_ctx, pkt) >= 0)
+    {
+        if (pkt->stream_index == vid_idx)
+        {
+            if (!avcodec_send_packet(dec_ctx, pkt))
+            {
+                while (!avcodec_receive_frame(dec_ctx, frame))
+                {
                     int idx = decoded_idx.load();
                     sws_scale(sws, frame->data, frame->linesize,
                               0, height,
@@ -87,8 +158,10 @@ int decode_thread(void* arg) {
                     }
                     buf_cv.notify_one();
                     std::unique_lock<std::mutex> lk(buf_mutex);
-                    buf_cv.wait(lk, [&]{ return !frame_ready || global_quit.load(); });
-                    if (global_quit.load()) break;
+                    buf_cv.wait(lk, [&]
+                                { return !frame_ready || global_quit.load(); });
+                    if (global_quit.load())
+                        break;
                     decoded_idx = 1 - idx;
                 }
             }
@@ -104,10 +177,12 @@ int decode_thread(void* arg) {
     return 0;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
     pthread_setname_np(pthread_self(), "main");
-    if (argc < 2) return -1;
-    const char* file = argv[1];
+    if (argc < 2)
+        return -1;
+    const char *file = argv[1];
 
     avformat_network_init();
     AVFormatContext *fmt_ctx = nullptr;
@@ -119,10 +194,15 @@ int main(int argc, char** argv) {
     width = fmt_ctx->streams[vid_idx]->codecpar->width;
     height = fmt_ctx->streams[vid_idx]->codecpar->height;
 
-    for (int i = 0; i < 2; ++i) {
+    // allocate and initialize two YUV frames to black
+    for (int i = 0; i < 2; ++i)
+    {
         yuv_frames[i] = av_frame_alloc();
         av_image_alloc(yuv_frames[i]->data, yuv_frames[i]->linesize,
                        width, height, AV_PIX_FMT_YUV420P, 1);
+        memset(yuv_frames[i]->data[0], 0, yuv_frames[i]->linesize[0] * height);
+        memset(yuv_frames[i]->data[1], 128, yuv_frames[i]->linesize[1] * (height / 2));
+        memset(yuv_frames[i]->data[2], 128, yuv_frames[i]->linesize[2] * (height / 2));
     }
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
@@ -130,34 +210,46 @@ int main(int argc, char** argv) {
                                        SDL_WINDOWPOS_CENTERED,
                                        width, height, SDL_WINDOW_RESIZABLE);
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-    SDL_Texture  *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_IYUV,
-                                          SDL_TEXTUREACCESS_STREAMING,
-                                          width, height);
+    SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_IYUV,
+                                         SDL_TEXTUREACCESS_STREAMING,
+                                         width, height);
+
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+    SDL_RenderClear(ren);
+    SDL_RenderPresent(ren);
 
     SDL_Thread *dt = SDL_CreateThread(decode_thread, "decode", fmt_ctx);
     Circle circles[MAX_CIRCLES] = {};
     Uint32 frame_delay = (Uint32)(1000.0 / av_q2d(fmt_ctx->streams[vid_idx]->avg_frame_rate));
-    Uint32 last = SDL_GetTicks(); bool quit = false;
+    Uint32 last = SDL_GetTicks();
+    bool quit = false;
     bool full = false;
 
-    while (!quit) {
+    while (!quit)
+    {
         SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
+        while (SDL_PollEvent(&e))
+        {
+            if (e.type == SDL_QUIT)
+            {
                 quit = true;
                 global_quit = true;
                 buf_cv.notify_all();
             }
-            if (e.type == SDL_MOUSEBUTTONDOWN) {
-                for (auto &c : circles) if (!c.active) {
-                    c.x = e.button.x;
-                    c.y = e.button.y;
-                    c.start_time = SDL_GetTicks();
-                    c.active = true;
-                    break;
-                }
+            if (e.type == SDL_MOUSEBUTTONDOWN)
+            {
+                for (auto &c : circles)
+                    if (!c.active)
+                    {
+                        c.x = e.button.x;
+                        c.y = e.button.y;
+                        c.start_time = SDL_GetTicks();
+                        c.active = true;
+                        break;
+                    }
             }
-            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_f) {
+            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_f)
+            {
                 full = !full;
                 SDL_SetWindowFullscreen(win, full ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
                 SDL_SetWindowBordered(win, full ? SDL_FALSE : SDL_TRUE);
@@ -165,12 +257,15 @@ int main(int argc, char** argv) {
         }
 
         Uint32 now = SDL_GetTicks();
-        if (now - last >= frame_delay || decoding_done.load()) {
+        if (now - last >= frame_delay || decoding_done.load())
+        {
             last = now;
             int disp_idx = 1 - decoded_idx.load();
             std::unique_lock<std::mutex> lk(buf_mutex);
-            buf_cv.wait(lk, []{ return frame_ready.load() || decoding_done.load(); });
-            if (frame_ready) {
+            buf_cv.wait(lk, []
+                        { return frame_ready.load() || decoding_done.load(); });
+            if (frame_ready)
+            {
                 SDL_UpdateYUVTexture(tex, nullptr,
                                      yuv_frames[disp_idx]->data[0], yuv_frames[disp_idx]->linesize[0],
                                      yuv_frames[disp_idx]->data[1], yuv_frames[disp_idx]->linesize[1],
@@ -180,10 +275,16 @@ int main(int argc, char** argv) {
             }
             SDL_RenderClear(ren);
             SDL_RenderCopy(ren, tex, nullptr, nullptr);
-            for (auto &c : circles) {
-                if (!c.active) continue;
+            for (auto &c : circles)
+            {
+                if (!c.active)
+                    continue;
                 Uint32 age = now - c.start_time;
-                if (age > CIRCLE_LIFETIME) { c.active = false; continue; }
+                if (age > CIRCLE_LIFETIME)
+                {
+                    c.active = false;
+                    continue;
+                }
                 float t = age / (float)CIRCLE_LIFETIME;
                 int r = (int)(MAX_RADIUS * t);
                 Uint8 a = (Uint8)(255 * (1 - t));
@@ -192,14 +293,17 @@ int main(int argc, char** argv) {
                 draw_circle(ren, c.x, c.y, r);
             }
             SDL_RenderPresent(ren);
-        } else {
+        }
+        else
+        {
             SDL_Delay((last + frame_delay > now) ? last + frame_delay - now : 0);
         }
     }
 
     buf_cv.notify_all();
     SDL_WaitThread(dt, nullptr);
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 2; ++i)
+    {
         av_freep(&yuv_frames[i]->data[0]);
         av_frame_free(&yuv_frames[i]);
     }
