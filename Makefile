@@ -21,12 +21,13 @@ TARGET_NAME := app
 
 all: debug
 
-LDOPTIONS := -lSDL2 -lSDL2_ttf -lavformat -lavcodec -lavutil -lswscale
+LDOPTIONS := -lSDL2 -lSDL2_ttf -lavformat -lavcodec -lavutil -lswscale -lusb-1.0
 LDFLAGS := 
-CXXCOMMON := -Wall
+CXXCOMMON := -Wall 
 
 debug: BUILD_TYPE := debug
-debug: CXXFLAGS := -g -O0 
+debug: CXXFLAGS := -g -O0 -fsanitize=address -fno-omit-frame-pointer
+debug: LDFLAGS += -fsanitize=address -fno-omit-frame-pointer
 debug: TARGET := $(TARGET_NAME)-debug
 debug: prepare
 
@@ -36,7 +37,7 @@ release: TARGET := $(TARGET_NAME)
 release: prepare
 
 prepare: $(RES_SRC)
-	$(MAKE) BUILD_TYPE=$(BUILD_TYPE) TARGET=$(OUT_DIR)/$(TARGET) build
+	$(MAKE) BUILD_TYPE=$(BUILD_TYPE) TARGET=$(OUT_DIR)/$(TARGET) CXXFLAGS="$(CXXFLAGS)" LDFLAGS="$(LDFLAGS)" build
 
 build: $(TARGET)
 

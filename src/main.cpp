@@ -4,6 +4,8 @@
 #include "resource/background.h"
 #include "resource/sst_regular.h"
 
+#include "connection.h"
+
 extern "C"
 {
 #include <libavformat/avformat.h> // FFmpeg library for multimedia container format handling
@@ -22,6 +24,8 @@ extern "C"
 
 #include <unistd.h>
 #include <iostream>
+
+#include <queue>
 
 #define MAX_CIRCLES 32      // Maximum number of circles drawn on the screen
 #define CIRCLE_LIFETIME 500 // Circle lifetime in milliseconds
@@ -46,6 +50,8 @@ static std::atomic<bool> frame_ready(false);   // Atomic flag indicating a new f
 static std::atomic<int> decoded_idx(0);        // Atomic index for the currently decoded frame buffer
 static std::atomic<bool> decoding_done(false); // Atomic flag indicating decoding is finished
 static std::atomic<bool> global_quit(false);   // Atomic flag signaling application shutdown
+
+static pthread_t connection_thread;
 
 // Interrupt callback for FFmpeg to check if decoding should stop
 static int interrupt_cb(void *) { return global_quit.load(); }
@@ -100,96 +106,199 @@ static std::vector<std::string> get_hw_codec_names(AVCodecID codec_id)
     return hw_names; // Return list of hardware decoder names
 }
 
-// Thread function to decode video frames from the input file
+static std::queue<std::vector<uint8_t>> raw_queue;
+static std::mutex queue_mutex;
+static std::condition_variable queue_cv;
+
+// Called by producer when new raw H.264 data arrives
+void OnData(const uint8_t *buf, size_t size)
+{
+    std::vector<uint8_t> packet(buf, buf + size);
+    {
+        std::lock_guard<std::mutex> lk(queue_mutex);
+        raw_queue.push(std::move(packet));
+    }
+    queue_cv.notify_one();
+}
+
+// Thread function to decode H.264 from raw buffers
 int decode_thread(void *arg)
 {
-    pthread_setname_np(pthread_self(), "decode");                                       // Set thread name to "decode"
-    AVFormatContext *fmt_ctx = (AVFormatContext *)arg;                                  // Cast argument to format context pointer
-    int vid_idx = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0); // Find video stream index
-    AVCodecParameters *ppar = fmt_ctx->streams[vid_idx]->codecpar;                      // Get codec parameters for video stream
+    pthread_setname_np(pthread_self(), "decode");
 
-    AVCodecContext *dec_ctx = nullptr; // Decoder context pointer
-    const AVCodec *codec = nullptr;    // Decoder codec pointer
+    // Select decoder: hardware first, then software
+    AVCodecID codec_id = AV_CODEC_ID_H264;
+    AVCodecContext *dec_ctx = nullptr;
+    const AVCodec *codec = nullptr;
 
-    // Attempt to use hardware-accelerated decoders first
-    std::vector<std::string> hw_codec_names = get_hw_codec_names(ppar->codec_id);
-    for (const auto &hw_name : hw_codec_names)
+    for (auto &hw_name : get_hw_codec_names(codec_id))
     {
-        codec = avcodec_find_decoder_by_name(hw_name.c_str()); // Find hardware decoder by name
+        codec = avcodec_find_decoder_by_name(hw_name.c_str());
         if (!codec)
             continue;
-        dec_ctx = avcodec_alloc_context3(codec); // Allocate decoder context
+        dec_ctx = avcodec_alloc_context3(codec);
         if (!dec_ctx)
             continue;
-        avcodec_parameters_to_context(dec_ctx, ppar);    // Copy codec parameters
-        if (avcodec_open2(dec_ctx, codec, nullptr) >= 0) // Try to open hardware decoder
+        if (avcodec_open2(dec_ctx, codec, nullptr) >= 0)
         {
             fprintf(stderr, "Using HW decoder: %s\n", codec->name);
             break;
         }
-        avcodec_free_context(&dec_ctx); // Free context if open failed
+        avcodec_free_context(&dec_ctx);
         dec_ctx = nullptr;
     }
-
-    // If no hardware decoder found, fallback to software decoder
     if (!dec_ctx)
     {
-        codec = avcodec_find_decoder(ppar->codec_id);   // Find software decoder
-        dec_ctx = avcodec_alloc_context3(codec);        // Allocate decoder context
-        avcodec_parameters_to_context(dec_ctx, ppar);   // Copy codec parameters
-        if (avcodec_open2(dec_ctx, codec, nullptr) < 0) // Open software decoder
+        codec = avcodec_find_decoder(codec_id);
+        if (!codec)
         {
-            fprintf(stderr, "Failed to open codec: %s\n", codec->name);
-            return -1; // Return error if open fails
+            fprintf(stderr, "H.264 decoder not found\n");
+            return -1;
+        }
+        dec_ctx = avcodec_alloc_context3(codec);
+        if (!dec_ctx || avcodec_open2(dec_ctx, codec, nullptr) < 0)
+        {
+            fprintf(stderr, "Failed to open software decoder: %s\n", codec->name);
+            avcodec_free_context(&dec_ctx);
+            return -1;
         }
         fprintf(stderr, "Using software decoder: %s\n", codec->name);
     }
 
-    AVPacket *pkt = av_packet_alloc();       // Allocate packet to hold encoded data
-    AVFrame *frame = av_frame_alloc();       // Allocate frame to hold decoded data
-    struct SwsContext *sws = sws_getContext( // Setup scaler context to convert pixel format to YUV420P
-        width, height, dec_ctx->pix_fmt,
-        width, height, AV_PIX_FMT_YUV420P,
-        SWS_BILINEAR, nullptr, nullptr, nullptr);
-
-    // Main decoding loop until quit or no more packets
-    while (!global_quit.load() && av_read_frame(fmt_ctx, pkt) >= 0)
+    // Initialize parser
+    AVCodecParserContext *parser = av_parser_init(codec_id);
+    if (!parser)
     {
-        if (pkt->stream_index == vid_idx) // Process only video stream packets
+        fprintf(stderr, "Failed to create parser\n");
+        avcodec_free_context(&dec_ctx);
+        return -1;
+    }
+
+    AVPacket *pkt = av_packet_alloc();
+    AVFrame *frame = av_frame_alloc();
+    if (!pkt || !frame)
+    {
+        fprintf(stderr, "Allocation failure\n");
+        av_parser_close(parser);
+        avcodec_free_context(&dec_ctx);
+        return -1;
+    }
+
+    SwsContext *sws = nullptr;
+
+    // Main decoding loop
+    while (!global_quit)
+    {
+        std::vector<uint8_t> segment;
         {
-            if (!avcodec_send_packet(dec_ctx, pkt)) // Send packet to decoder
+            std::unique_lock<std::mutex> lk(queue_mutex);
+            queue_cv.wait(lk, []
+                          { return global_quit.load() || !raw_queue.empty(); });
+            if (global_quit && raw_queue.empty())
+                break;
+            segment = std::move(raw_queue.front());
+            raw_queue.pop();
+        }
+
+        uint8_t *data_ptr = segment.data();
+        size_t data_size = segment.size();
+
+        // Parse and decode
+        while (data_size > 0)
+        {
+            uint8_t *out_data;
+            int out_size;
+            int len = av_parser_parse2(
+                parser, dec_ctx,
+                &out_data, &out_size,
+                data_ptr, (int)data_size,
+                AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+            if (len < 0)
+                break;
+            data_ptr += len;
+            data_size -= len;
+
+            if (out_size > 0)
             {
-                while (!avcodec_receive_frame(dec_ctx, frame)) // Receive all decoded frames
+                av_packet_unref(pkt);
+                pkt->data = out_data;
+                pkt->size = out_size;
+                if (avcodec_send_packet(dec_ctx, pkt) == 0)
                 {
-                    int idx = decoded_idx.load(); // Get current decoded frame index
-                    // Convert frame pixel format and scale to YUV420P buffer
-                    sws_scale(sws, frame->data, frame->linesize,
-                              0, height,
-                              yuv_frames[idx]->data, yuv_frames[idx]->linesize);
+                    while (avcodec_receive_frame(dec_ctx, frame) == 0)
                     {
-                        std::lock_guard<std::mutex> lk(buf_mutex); // Lock mutex
-                        frame_ready = true;                        // Mark frame ready for display
+                        // Initialize scaler on first frame
+                        if (!sws)
+                        {
+                            sws = sws_getContext(
+                                width, height, (AVPixelFormat)frame->format,
+                                width, height, AV_PIX_FMT_YUV420P,
+                                SWS_BILINEAR, nullptr, nullptr, nullptr);
+                            if (!sws)
+                            {
+                                fprintf(stderr, "Failed to create sws context\n");
+                                global_quit = true;
+                                break;
+                            }
+                        }
+                        int idx = decoded_idx.load();
+                        sws_scale(sws,
+                                  frame->data, frame->linesize,
+                                  0, height,
+                                  yuv_frames[idx]->data,
+                                  yuv_frames[idx]->linesize);
+                        {
+                            std::lock_guard<std::mutex> guard(buf_mutex);
+                            frame_ready = true;
+                        }
+                        buf_cv.notify_one();
+                        std::unique_lock<std::mutex> guard(buf_mutex);
+                        buf_cv.wait(guard, []
+                                    { return !frame_ready.load() || global_quit.load(); });
+                        if (global_quit)
+                            break;
+                        decoded_idx = 1 - idx;
                     }
-                    buf_cv.notify_one(); // Notify main thread
-                    std::unique_lock<std::mutex> lk(buf_mutex);
-                    // Wait until frame is consumed or quit is triggered
-                    buf_cv.wait(lk, [&]
-                                { return !frame_ready || global_quit.load(); });
-                    if (global_quit.load())
-                        break;             // Exit if quitting
-                    decoded_idx = 1 - idx; // Swap buffer index for double buffering
                 }
             }
         }
-        av_packet_unref(pkt); // Release packet resources
     }
-    decoding_done = true;           // Mark decoding finished
-    buf_cv.notify_all();            // Notify all waiting threads
-    sws_freeContext(sws);           // Free scaling context
-    av_frame_free(&frame);          // Free decoded frame memory
-    av_packet_free(&pkt);           // Free packet memory
-    avcodec_free_context(&dec_ctx); // Free codec context
-    return 0;                       // Thread exit with success
+
+    // Flush decoder
+    avcodec_send_packet(dec_ctx, nullptr);
+    while (avcodec_receive_frame(dec_ctx, frame) == 0)
+    {
+        if (!sws)
+        {
+            sws = sws_getContext(
+                width, height, (AVPixelFormat)frame->format,
+                width, height, AV_PIX_FMT_YUV420P,
+                SWS_BILINEAR, nullptr, nullptr, nullptr);
+            if (!sws)
+                break;
+        }
+        int idx = decoded_idx.load();
+        sws_scale(sws,
+                  frame->data, frame->linesize,
+                  0, height,
+                  yuv_frames[idx]->data,
+                  yuv_frames[idx]->linesize);
+        {
+            std::lock_guard<std::mutex> guard(buf_mutex);
+            frame_ready = true;
+        }
+        buf_cv.notify_one();
+    }
+
+    decoding_done = true;
+    buf_cv.notify_all();
+
+    sws_freeContext(sws);
+    av_frame_free(&frame);
+    av_packet_free(&pkt);
+    av_parser_close(parser);
+    avcodec_free_context(&dec_ctx);
+    return 0;
 }
 
 TTF_Font *LoadEmbeddedFont(int ptsize)
@@ -280,6 +389,8 @@ int main(int argc, char **argv)
     int img_w = 0;
     int img_h = 0;
 
+    RegisterDataCallback(OnData);
+
     // Initialize SDL video subsystem
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0)
     {
@@ -357,7 +468,7 @@ int main(int argc, char **argv)
     };
 
     // Copy texture to renderer at centered position
-    SDL_RenderClear(renderer);                      // Clear renderer to black
+    SDL_RenderClear(renderer); // Clear renderer to black
     SDL_RenderCopy(renderer, texture, nullptr, &dst);
     DrawText(renderer, font, "Initialising");
 
@@ -366,25 +477,22 @@ int main(int argc, char **argv)
     SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
     SDL_ShowWindow(window);
     SDL_RenderPresent(renderer);
-    bool full = true;            // Flag for fullscreen toggle
-
-
-    sleep(4);
+    bool full = true; // Flag for fullscreen toggle
 
     pthread_setname_np(pthread_self(), "main"); // Set main thread name
-    if (argc < 2)                               // Check if filename argument is provided
-        return -1;
-    const char *file = argv[1]; // Input video file path
+    // if (argc < 2)                               // Check if filename argument is provided
+    //     return -1;
+    // const char *file = argv[1]; // Input video file path
 
-    avformat_network_init(); // Initialize network components of FFmpeg
-    AVFormatContext *fmt_ctx = nullptr;
-    avformat_open_input(&fmt_ctx, file, nullptr, nullptr); // Open video file
-    fmt_ctx->interrupt_callback.callback = interrupt_cb;   // Set interrupt callback for graceful exit
-    avformat_find_stream_info(fmt_ctx, nullptr);           // Retrieve stream information
+    // avformat_network_init(); // Initialize network components of FFmpeg
+    // AVFormatContext *fmt_ctx = nullptr;
+    // avformat_open_input(&fmt_ctx, file, nullptr, nullptr); // Open video file
+    // fmt_ctx->interrupt_callback.callback = interrupt_cb;   // Set interrupt callback for graceful exit
+    // avformat_find_stream_info(fmt_ctx, nullptr);           // Retrieve stream information
 
-    int vid_idx = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0); // Get video stream index
-    width = fmt_ctx->streams[vid_idx]->codecpar->width;                                 // Get video width
-    height = fmt_ctx->streams[vid_idx]->codecpar->height;                               // Get video height
+    // int vid_idx = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0); // Get video stream index
+    width = 640;  // fmt_ctx->streams[vid_idx]->codecpar->width;                                 // Get video width
+    height = 480; // fmt_ctx->streams[vid_idx]->codecpar->height;                               // Get video height
 
     // Allocate two YUV420P frames for double buffering and initialize to black
     for (int i = 0; i < 2; ++i)
@@ -393,11 +501,11 @@ int main(int argc, char **argv)
         yuv_frames[i]->format = AV_PIX_FMT_YUV420P;
         yuv_frames[i]->width = width;
         yuv_frames[i]->height = height;
-        av_frame_get_buffer(yuv_frames[i], 32); // 32 = alignment
-        // av_image_alloc(yuv_frames[i]->data, yuv_frames[i]->linesize, width, height, AV_PIX_FMT_YUV420P, 1);                           // Allocate image buffers for YUV420P
-        // memset(yuv_frames[i]->data[0], 0, yuv_frames[i]->linesize[0] * height);         // Set Y plane to black (0)
-        // memset(yuv_frames[i]->data[1], 128, yuv_frames[i]->linesize[1] * (height / 2)); // Set U plane to 128 (neutral)
-        // memset(yuv_frames[i]->data[2], 128, yuv_frames[i]->linesize[2] * (height / 2)); // Set V plane to 128 (neutral)
+        av_frame_get_buffer(yuv_frames[i], 32);                                                             // 32 = alignment
+        av_image_alloc(yuv_frames[i]->data, yuv_frames[i]->linesize, width, height, AV_PIX_FMT_YUV420P, 1); // Allocate image buffers for YUV420P
+        memset(yuv_frames[i]->data[0], 0, yuv_frames[i]->linesize[0] * height);                             // Set Y plane to black (0)
+        memset(yuv_frames[i]->data[1], 128, yuv_frames[i]->linesize[1] * (height / 2));                     // Set U plane to 128 (neutral)
+        memset(yuv_frames[i]->data[2], 128, yuv_frames[i]->linesize[2] * (height / 2));                     // Set V plane to 128 (neutral)
     }
 
     SDL_Texture *tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, // Create texture for YUV frames
@@ -408,14 +516,17 @@ int main(int argc, char **argv)
     // SDL_RenderClear(renderer);                      // Clear renderer to black
     // SDL_RenderPresent(renderer);                    // Present initial blank frame
 
-    SDL_Thread *dt = SDL_CreateThread(decode_thread, "decode", fmt_ctx); // Start decoding thread
+    SDL_Thread *dt = SDL_CreateThread(decode_thread, "decode", nullptr); // Start decoding thread
+
+    pthread_create(&connection_thread, NULL, connecliton_loop, NULL);
+    std::cout << "Connection loop started" << std::endl;
 
     Circle circles[MAX_CIRCLES] = {}; // Initialize array of circles (all inactive)
     // Calculate delay between frames based on video frame rate (in milliseconds)
-    Uint32 frame_delay = (Uint32)(1000.0 / av_q2d(fmt_ctx->streams[vid_idx]->avg_frame_rate));
+    // Uint32 frame_delay = (Uint32)(1000.0 / av_q2d(fmt_ctx->streams[vid_idx]->avg_frame_rate));
+    Uint32 frame_delay = 1000 / 60;
     Uint32 last = SDL_GetTicks(); // Record last frame display time
     bool quit = false;            // Flag to signal quit event
-
 
     // Main event and rendering loop
     while (!quit)
@@ -431,6 +542,8 @@ int main(int argc, char **argv)
             }
             if (e.type == SDL_MOUSEBUTTONDOWN) // Mouse button pressed
             {
+
+                printf("Click %d %d", e.button.x, e.button.y);
                 // Activate first inactive circle at mouse click position
                 for (auto &c : circles)
                     if (!c.active)
@@ -442,11 +555,36 @@ int main(int argc, char **argv)
                         break;
                     }
             }
-            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_f) // 'f' key pressed
+            if (e.type == SDL_KEYDOWN) // 'f' key pressed
             {
-                full = !full; // Toggle fullscreen mode
-                SDL_SetWindowFullscreen(window, full ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-                SDL_SetWindowBordered(window, full ? SDL_FALSE : SDL_TRUE);
+                switch (e.key.keysym.sym)
+                {
+                case SDLK_f:
+                    full = !full; // Toggle fullscreen mode
+                    SDL_SetWindowFullscreen(window, full ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                    SDL_SetWindowBordered(window, full ? SDL_FALSE : SDL_TRUE);
+                    break;
+                case SDLK_LEFT:
+                    sendKey(100); // Call your function for Left key
+                    break;
+
+                case SDLK_RIGHT:
+                    sendKey(101); // Call your function for Right key
+                    break;
+
+                case SDLK_RETURN:
+                    sendKey(104);
+                    sendKey(105);
+                    // Call your function for Enter key
+                    break;
+
+                case SDLK_BACKSPACE:
+                    sendKey(106); // Call your function for Backspace key
+                    break;
+
+                default:
+                    break;
+                }
             }
         }
 
@@ -458,8 +596,9 @@ int main(int argc, char **argv)
             int disp_idx = 1 - decoded_idx.load(); // Get index of frame to display
             std::unique_lock<std::mutex> lk(buf_mutex);
             // Wait until a frame is ready or decoding is done
-            buf_cv.wait(lk, []
-                        { return frame_ready.load() || decoding_done.load(); });
+            auto timeout = std::chrono::milliseconds(100);
+            buf_cv.wait_for(lk, timeout, [&]()
+                            { return frame_ready.load() || decoding_done.load(); });
             if (frame_ready)
             {
                 // Update SDL texture with YUV frame data
@@ -500,8 +639,8 @@ int main(int argc, char **argv)
         }
     }
 
-    buf_cv.notify_all();         // Notify threads to quit if waiting
-    SDL_WaitThread(dt, nullptr); // Wait for decode thread to finish
+    buf_cv.notify_all(); // Notify threads to quit if waiting
+    // SDL_WaitThread(dt, nullptr); // Wait for decode thread to finish
 
     // Free allocated YUV frames
     for (int i = 0; i < 2; ++i)
@@ -517,7 +656,7 @@ int main(int argc, char **argv)
     SDL_Quit();
 
     // Close input file and network cleanup
-    avformat_close_input(&fmt_ctx);
-    avformat_network_deinit();
+    // avformat_close_input(&fmt_ctx);
+    // avformat_network_deinit();
     return 0; // Exit program successfully
 }
