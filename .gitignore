@@ -1,0 +1,8 @@
+# Generated files
+out/
+headers/
+src/autogen
+
+# General files
+.*/
+.DS*
