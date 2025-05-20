@@ -11,7 +11,9 @@ extern "C"
 #include <thread>
 
 #include "struct/video_buffer.h"
-#include "struct/raw_queue.h"
+#include "struct/atomic_queue.h"
+#include "struct/message.h"
+#include "helper/error.h"
 
 class Decoder
 {
@@ -20,7 +22,7 @@ public:
     Decoder();
     ~Decoder();
 
-    void start(RawQueue *data, VideoBuffer *vb,  AVCodecID codecId);
+    void start(AtomicQueue<Message> *data, VideoBuffer *vb,  AVCodecID codecId);
     void stop();
 
 private:
@@ -33,9 +35,8 @@ private:
     Error _status;
 
     std::atomic<bool> _active = false;
-    std::atomic<bool> _running = false;
 
-    RawQueue *_data = nullptr;
+    AtomicQueue<Message> *_data = nullptr;
     VideoBuffer *_vb = nullptr;
 };
 

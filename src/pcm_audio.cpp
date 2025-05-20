@@ -11,12 +11,12 @@ PcmAudio::~PcmAudio()
 
 void PcmAudio::setVolume(float vol)
 {
-    if(vol<0)
+    if (vol < 0)
     {
         _volume = 0;
         return;
     }
-    if(vol>1)
+    if (vol > 1)
     {
         _volume = 1;
         return;
@@ -24,7 +24,7 @@ void PcmAudio::setVolume(float vol)
     _volume = vol;
 }
 
-void PcmAudio::start(RawQueue *data)
+void PcmAudio::start(AtomicQueue<Message> *data)
 {
     if (_active)
         stop();
@@ -43,6 +43,21 @@ void PcmAudio::stop()
         _thread.join();
 }
 
+static ChannelConfig configTable[] = {
+    {8000, 1},  // type = 3
+    {48000, 2}, // type = 4
+    {16000, 1}, // type = 5
+    {24000, 1}, // type = 6
+    {16000, 2}, // type = 7
+};
+
+ChannelConfig PcmAudio::getConfig(int type) const
+{
+    if (type >= 3 && type <= 7)
+        return configTable[type - 3];
+    return {44100, 2};
+}
+
 void PcmAudio::runner()
 {
     setThreadName("audio");
@@ -52,63 +67,21 @@ void PcmAudio::runner()
     size_t bufferedBytes = 0;
     bool unpaused = false;
     size_t targetBytes = 0;
-    int rate = 0;
-    int channels = 0;
+    ChannelConfig config = {0, 0};
 
     while (_active)
     {
-        RawEntry segment = _data->wait(_active);
+        unique_ptr<Message> segment = _data->wait(_active);
         if (!_active)
-        {
-            if (segment.data)
-                free(segment.data);
             break;
-        }
 
-        int config = 0;
-        memcpy(&config, segment.data, sizeof(int));
-
-        int newRate = 44100;
-        int newChannels = 2;
-        switch (config)
-        {
-        case 1:
-            newRate = 44100;
-            newChannels = 2;
-            break;
-        case 2:
-            newRate = 44100;
-            newChannels = 2;
-            break;
-        case 3:
-            newRate = 8000;
-            newChannels = 1;
-            break;
-        case 4:
-            newRate = 48000;
-            newChannels = 2;
-            break;
-        case 5:
-            newRate = 16000;
-            newChannels = 1;
-            break;
-        case 6:
-            newRate = 24000;
-            newChannels = 1;
-            break;
-        case 7:
-            newRate = 16000;
-            newChannels = 2;
-            break;
-        }
+        ChannelConfig segmentConfig = getConfig(segment->getInt(OFFSET_AUDIO_FORMAT));
 
         // If settings changed, (re)open audio device
-        if (device == 0 || rate != newRate || channels != newChannels)
+        if (device == 0 || config != segmentConfig)
         {
-            rate = newRate;
-            channels = newChannels;
+            config = segmentConfig;
 
-            printf("PCM SETTING %d %d\n", rate, channels);
             // Close existing device
             if (device != 0)
             {
@@ -117,9 +90,9 @@ void PcmAudio::runner()
             }
             // Configure new spec
             SDL_zero(spec);
-            spec.freq = rate;
+            spec.freq = config.rate;
             spec.format = AUDIO_S16SYS;
-            spec.channels = static_cast<Uint8>(channels);
+            spec.channels = config.channels;
             spec.samples = 4096;
             spec.callback = nullptr;
 
@@ -127,11 +100,10 @@ void PcmAudio::runner()
             if (device == 0)
             {
                 std::cerr << "Failed to open audio: " << SDL_GetError() << std::endl;
-                free(segment.data);
                 continue;
             }
             // Calculate new buffer target: 0.5s
-            targetBytes = rate * channels * sizeof(int16_t) / 2;
+            targetBytes = config.rate * config.channels * sizeof(int16_t) / 2;
             bufferedBytes = 0;
             unpaused = false;
             // Start paused
@@ -139,17 +111,16 @@ void PcmAudio::runner()
         }
 
         // Apply volume in-place
-        int16_t *samples = reinterpret_cast<int16_t *>(segment.data + segment.offset);
-        size_t count = segment.size / sizeof(int16_t);
+        int16_t *samples = reinterpret_cast<int16_t *>(segment->data());
+        size_t count = segment->length() / sizeof(int16_t);
         for (size_t i = 0; i < count; ++i)
         {
             samples[i] = static_cast<int16_t>(samples[i] * _volume);
         }
 
         // Queue audio
-        SDL_QueueAudio(device, segment.data + segment.offset, segment.size);
-        bufferedBytes += segment.size;
-        free(segment.data);
+        SDL_QueueAudio(device, segment->data(), segment->length());
+        bufferedBytes += segment->length();
 
         // Unpause when enough buffered
         if (!unpaused && bufferedBytes >= targetBytes)

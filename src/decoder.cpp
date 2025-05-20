@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include "helper/functions.h"
-#include "helper/settings.h"
+#include "settings.h"
 
 Decoder::Decoder()
 {
@@ -13,7 +13,7 @@ Decoder::~Decoder()
     stop();
 }
 
-void Decoder::start(RawQueue *data, VideoBuffer *vb, AVCodecID codecId)
+void Decoder::start(AtomicQueue<Message> *data, VideoBuffer *vb, AVCodecID codecId)
 {
     if (_active)
         stop();
@@ -22,7 +22,6 @@ void Decoder::start(RawQueue *data, VideoBuffer *vb, AVCodecID codecId)
     _data = data;
     _codecId = codecId;
     _active = true;
-    _running = false;
     _thread = std::thread(&Decoder::runner, this);
 }
 void Decoder::stop()
@@ -133,11 +132,7 @@ void Decoder::runner()
 
 void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame)
 {
-    SwsContext *sws = nullptr;
-    int sws_height = 0;
-    int sws_width = 0;
     uint32_t counter = 0;
-    _running = true;
 
     std::cout << "Video decoder loop started" << std::endl;
 
@@ -145,20 +140,13 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
     while (_active)
     {
         // Get raw data segment from queue
-        RawEntry segment = _data->wait(_active);
+        std::unique_ptr<Message> segment = _data->wait(_active);
 
         if (!_active)
-        {
-            if (segment.data)
-            {
-                free(segment.data);
-                segment.data = nullptr;
-            }
             continue;
-        }
 
-        uint8_t *data_ptr = segment.data + segment.offset; // Pointer to raw data buffer
-        int data_size = segment.size;                      // Size of raw data buffer
+        uint8_t *data_ptr = segment->data();
+        int data_size = segment->length();
 
         // Feed raw data into the parser and decoder
         while (_active && data_size > 0)
@@ -201,52 +189,11 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
             // Receive decoded frames
             while (avcodec_receive_frame(context, frame) == 0 && _active)
             {
-                if (!sws || sws_width != frame->width || sws_height != frame->height)
-                {
-                    if (sws)
-                    {
-                        sws_freeContext(sws);
-                        sws = nullptr;
-                    }
-
-                    sws_width = frame->width;
-                    sws_height = frame->height;
-                    sws = sws_getContext(sws_width, sws_height, (AVPixelFormat)frame->format,
-                                         _vb->width(), _vb->height(), AV_PIX_FMT_YUV420P,
-                                         Settings::scaler, nullptr, nullptr, nullptr);
-                    if (!sws)
-                    {
-                        std::cout << "Error creating sws context" << std::endl;
-                        _active = false;
-                        continue;
-                    }
-                }
-
-                // Write decoded frame into video buffer and get output frame pointer
-                const AVFrame *out = _vb->writeFrame(counter++);
-                // Scale frame to output format
-                sws_scale(sws,
-                          frame->data, frame->linesize,
-                          0, sws_height,
-                          out->data,
-                          out->linesize);
-                // Commit frame to buffer
-                _vb->commitFrame();
+                AVFrame* out = _vb->write(counter++);
+                av_frame_unref(out);
+                av_frame_move_ref(out, frame);
+                _vb->commit();
             }
         }
-
-        if (segment.data)
-        {
-            free(segment.data);
-            segment.data = nullptr;
-        }
-    }
-
-    _running = false;
-
-    if (sws)
-    {
-        sws_freeContext(sws);
-        sws = nullptr;
     }
 }

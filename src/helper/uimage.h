@@ -1,5 +1,5 @@
-#ifndef SRC_UX_UIMAGE
-#define SRC_UX_UIMAGE
+#ifndef SRC_HELPER_UIMAGE
+#define SRC_HELPER_UIMAGE
 
 #include <SDL2/SDL.h>
 #include <iostream>
@@ -49,4 +49,4 @@ private:
     SDL_Surface *_surface = nullptr;
 };
 
-#endif
+#endif /* SRC_HELPER_UIMAGE */

@@ -1,20 +1,20 @@
 # Dongle configuration
 # Note that vendor id and product id are in decimals, not hex here
-vendor-id = 4884 # 0x1314
-product-id = 5408 # 0x1520
+#vendor-id = 4884 # 0x1314
+#product-id = 5408 # 0x1520
 
 # Application starts in full screen
-fullscreen = true
+#fullscreen = true
 
 # Application drawing settings widthxheight
-width = 720
-height = 576
-fps = 30  
+#width = 720
+#height = 576
+#fps = 60  
 
 # Requested image from phone 
-source-width = 1080
-source-height = 864
-source-fps = 30    
+#source-width = 720
+#source-height = 576
+#source-fps = 30    
 
 # Scaler algorithm if application drawing is differen from source image
 # It's recommended to keep application and source values same cause scaling
@@ -31,13 +31,13 @@ source-fps = 30
 #    SWS_SINC           256
 #    SWS_LANCZOS        512
 #    SWS_SPLINE         1024
-scaler = 1024
+#scaler = 2
 
 # Enable logging
-logging = false 
+logging = true 
 
 # Size of video and audio buffers. Increase if you see artifacts
-queue-size = 32
+#queue-size = 32
 
 # Font size for messgaes on screen
-font-size = 30
+#font-size = 30

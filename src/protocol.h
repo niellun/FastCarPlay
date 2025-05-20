@@ -1,9 +1,10 @@
 #ifndef SRC_PROTOCOL
 #define SRC_PROTOCOL
 
-#include "struct/raw_queue.h"
+#include "struct/atomic_queue.h"
+#include "struct/message.h"
 #include "helper/iprotocol.h"
-#include "helper/settings.h"
+#include "settings.h"
 #include "connector.h"
 
 #define MAGIC 0x55aa55aa
@@ -40,10 +41,10 @@ public:
     void sendMove(float dx, float dy);
 
     Connector connector;
-    RawQueue videoData;
-    RawQueue audioStream0;
-    RawQueue audioStream1;
-    RawQueue audioStream2;
+    AtomicQueue<Message> videoData;
+    AtomicQueue<Message> audioStream0;
+    AtomicQueue<Message> audioStream1;
+    AtomicQueue<Message> audioStream2;
     bool phoneConnected;
 
 private:

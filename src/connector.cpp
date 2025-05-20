@@ -5,7 +5,7 @@
 #include <condition_variable>
 
 #include "helper/functions.h"
-#include "helper/settings.h"
+#include "settings.h"
 
 Connector::Connector(uint16_t videoPadding)
     : _videoPadding(videoPadding)

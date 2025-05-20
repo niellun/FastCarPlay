@@ -1,5 +1,5 @@
-#ifndef SRC_PROTOCOL_ISENDER
-#define SRC_PROTOCOL_ISENDER
+#ifndef SRC_HELPER_IPROTOCOL
+#define SRC_HELPER_IPROTOCOL
 
 #include <cstdint>
 #include <functional>
@@ -13,4 +13,4 @@ public:
     virtual void onStatus(const char* status) = 0;
     virtual void onDevice(bool connected) = 0;
 };
-#endif /* SRC_PROTOCOL_ISENDER */
+#endif /* SRC_HELPER_IPROTOCOL */

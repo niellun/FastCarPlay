@@ -178,7 +178,7 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     {
         if (length <= 20)
             break;
-        videoData.push(data, 20, length - 20);
+        videoData.pushDiscard( std::make_unique<Message>(data, length, 20));
         dispose = false;
         break;
     }
@@ -193,19 +193,19 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
         memcpy(&channel, data + 8, sizeof(int));
         if (channel == 0)
         {
-            audioStream0.push(data, 12, length - 12);
+            audioStream0.pushDiscard(std::make_unique<Message>(data, length, 12));
             dispose = false;
             break;
         }
         if (channel == 1)
         {
-            audioStream1.push(data, 12, length - 12);
+            audioStream1.pushDiscard(std::make_unique<Message>(data, length, 12));
             dispose = false;
             break;
         }
         if (channel == 2)
         {
-            audioStream2.push(data, 12, length - 12);
+            audioStream2.pushDiscard(std::make_unique<Message>(data, length, 12));
             dispose = false;
             break;
         }

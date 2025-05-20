@@ -7,28 +7,44 @@
 
 #include <SDL2/SDL.h>
 
-#include "struct/raw_queue.h"
+#include "struct/atomic_queue.h"
+#include "struct/message.h"
 #include "helper/error.h"
 
+struct ChannelConfig
+{
+    int rate;
+    uint8_t channels;
 
-class PcmAudio {
+    bool operator==(ChannelConfig const &other) const
+    {
+        return rate == other.rate && channels == other.channels;
+    }
+
+    bool operator!=(ChannelConfig const &other) const
+    {
+        return !(*this == other);
+    }
+};
+
+class PcmAudio
+{
 public:
     PcmAudio();
     ~PcmAudio();
 
     // Start playing raw PCM data from queue
-    void start(RawQueue* data);
+    void start(AtomicQueue<Message> *data);
     void stop();
 
     void setVolume(float vol);
 
 private:
+    ChannelConfig getConfig(int type) const;
     void runner();
     void loop(SDL_AudioDeviceID device);
 
-    RawQueue* _data = nullptr;
-    int _sampleRate = 0;
-    int _channels = 0;
+    AtomicQueue<Message> *_data = nullptr;
 
     float _volume = 1.0f;
 

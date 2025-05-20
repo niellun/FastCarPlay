@@ -1,5 +1,8 @@
-#include <SDL2/SDL.h> // Include SDL2 library headers for graphics and event handling
+#include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
+#include <string>
+#include <unistd.h>
+#include <iostream>
 
 extern "C"
 {
@@ -9,33 +12,21 @@ extern "C"
 #include <libavutil/imgutils.h>   // FFmpeg utility functions for image handling
 }
 
-#include <atomic>             // C++ atomic types for thread-safe variables
-#include <mutex>              // C++ mutex for locking resources
-#include <condition_variable> // C++ condition variable for thread synchronization
-#include <cmath>              // Math functions (not explicitly used here but included)
-#include <cstdio>             // Standard C I/O functions
-#include <vector>             // C++ dynamic array container
-#include <string>             // C++ string type
-#include <unistd.h>
-#include <iostream>
-
 #include "resource/background.h"
 #include "resource/font.h"
 
-#include "helper/settings.h"
 #include "helper/functions.h"
-
-#include "ux/ufont.h"
-#include "ux/uimage.h"
+#include "helper/ufont.h"
+#include "helper/uimage.h"
 
 #include "struct/video_buffer.h"
+
 #include "protocol.h"
 #include "decoder.h"
 #include "pcm_audio.h"
+#include "renderer.h"
 
-static const char *title = "Fast Car Play v0.1";
-static int width = 0;
-static int height = 0;
+static const char *title = "Fast Car Play v0.2";
 static SDL_Window *window = nullptr;
 static SDL_Renderer *renderer = nullptr;
 bool active = false;
@@ -43,7 +34,6 @@ bool active = false;
 static SDL_Texture *textTexture = nullptr;
 static std::string textureText = "";
 static SDL_Texture *imgTexture = nullptr;
-static SDL_Texture *videoTexture = nullptr;
 
 static bool mouseDown = false;
 static bool fullscreen = false;
@@ -196,10 +186,7 @@ void application()
     SDL_RenderClear(renderer);                      // Clear renderer to black
     SDL_RenderPresent(renderer);                    // Present initial blank frame
 
-    std::cout << " > Application started" << std::endl;
-
     VideoBuffer videoBuffer;
-    videoBuffer.allocate(Settings::width, Settings::height).throwError();
     Protocol protocol(Settings::sourceWidth, Settings::sourceHeight, Settings::sourceFps, AV_INPUT_BUFFER_PADDING_SIZE);
     Decoder decoder;
     PcmAudio audio0, audio1, audio2;
@@ -221,8 +208,10 @@ void application()
     SDL_RenderPresent(renderer);
 
     std::cout << " > Application loop" << std::endl;
+    Renderer videoRenderer(renderer);
     bool dirty = true;
     bool connected = false;
+    bool videoPrepared = false;
     const int activeDelay = 1000 / Settings::fps;
     const int inactiveDelay = 1000 / 5; // 5FPS
     uint32_t frameDelay = inactiveDelay;
@@ -240,6 +229,7 @@ void application()
             DrawImage(image);
             SDL_RenderPresent(renderer);
             dirty = true;
+            videoPrepared = false;
             frameDelay = connected ? activeDelay : inactiveDelay;
         }
 
@@ -247,18 +237,18 @@ void application()
         {
             AVFrame *frame = nullptr;
             uint32_t frameid = 0;
-            if (videoBuffer.getLatest(&frame, &frameid) && frameid != latestid)
+            if (videoBuffer.latest(&frame, &frameid) && frameid != latestid && frame)
             {
-                // Update SDL texture with YUV frame data
-                SDL_UpdateYUVTexture(videoTexture, nullptr,
-                                     frame->data[0], frame->linesize[0],
-                                     frame->data[1], frame->linesize[1],
-                                     frame->data[2], frame->linesize[2]);
+                if (!videoPrepared)
+                    videoPrepared = videoRenderer.prepare(frame, Settings::width, Settings::height, Settings::scaler);
+                if (videoPrepared && videoRenderer.render(frame))
+                {
+                    SDL_RenderClear(renderer);
+                    SDL_RenderCopy(renderer, videoRenderer.texture, nullptr, nullptr);
+                    SDL_RenderPresent(renderer);
+                }
                 latestid = frameid;
-                videoBuffer.consumeLatest();
-                SDL_RenderClear(renderer);
-                SDL_RenderCopy(renderer, videoTexture, nullptr, nullptr);
-                SDL_RenderPresent(renderer);
+                videoBuffer.consume();
             }
         }
         else
@@ -287,6 +277,7 @@ void application()
         }
     }
     std::cout << " > Application stopping" << std::endl;
+    SDL_HideWindow(window);
 }
 
 int main(int argc, char **argv)
@@ -331,23 +322,13 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (Settings::fullscreen)
-    {
-        width = displayMode.w;
-        height = displayMode.h;
-    }
-    else
-    {
-        width = Settings::width;
-        height = Settings::height;
-    }
-
-    // Create SDL window centered on screen, 800x600 size
+    // Create SDL window centered on screen
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best"); 
     window = SDL_CreateWindow(title,
                               SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,
-                              width,
-                              height,
+                              Settings::fullscreen ? displayMode.w : Settings::width,
+                              Settings::fullscreen ? displayMode.h : Settings::height,
                               SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
 
     if (!window)
@@ -362,19 +343,9 @@ int main(int argc, char **argv)
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer)
     {
-        videoTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV,
-                                         SDL_TEXTUREACCESS_STREAMING,
-                                         Settings::width, Settings::height);
-        if (videoTexture)
-        {
-            application();
-            SDL_DestroyTexture(videoTexture);
-            std::cout << " > Application finish" << std::endl;
-        }
-        else
-        {
-            std::cerr << "[Main] SDL can't create video texture: " << SDL_GetError() << std::endl;
-        }
+        std::cout << " > Application started" << std::endl;
+        application();
+        std::cout << " > Application finish" << std::endl;
         SDL_DestroyRenderer(renderer);
     }
     else

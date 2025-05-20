@@ -1,5 +1,5 @@
-#ifndef SRC_UX_UFONT
-#define SRC_UX_UFONT
+#ifndef SRC_HELPER_UFONT
+#define SRC_HELPER_UFONT
 
 #include <SDL2/SDL_ttf.h>
 #include <iostream>
@@ -59,4 +59,4 @@ private:
     TTF_Font *_font = nullptr;
 };
 
-#endif /* SRC_UX_UFONT */
+#endif /* SRC_HELPER_UFONT */
