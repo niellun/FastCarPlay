@@ -9,11 +9,14 @@
 #include <string>
 
 #include "helper/iprotocol.h"
+#include "aes_cipher.h"
 
 #define READ_TIMEOUT 5000
+#define ENCRYPTION_BASE "SkBRDy3gmrw1ieH0"
 
 #pragma pack(push, 1)
-struct Header {
+struct Header
+{
     uint32_t magic;
     uint32_t length;
     uint32_t type;
@@ -31,10 +34,10 @@ public:
     void start(IProtocol *protocol);
     void stop();
 
-    int send(int cmd, uint8_t *data, uint32_t size);
-    int send(int cmd);
+    int send(int cmd, bool encrypt = true, uint8_t *data = nullptr, uint32_t size = 0);
+    void setEncryption(bool enabled);
 
-    static void write_uint32_le(uint8_t *dst, uint32_t value);
+    AESCipher *Cypher() const { return _cipher; };
 
 private:
     void read_loop();
@@ -43,14 +46,15 @@ private:
     bool connect(uint16_t vendor_id, uint16_t product_id);
     bool link();
     void release();
-    
-    void status(const char* status);
+
+    void status(const char *status);
 
     libusb_context *_context = nullptr;
     libusb_device_handle *_device = nullptr;
     uint8_t _endpoint_in;
     uint8_t _endpoint_out;
     bool _connected;
+    std::atomic<bool> _ecnrypt = false;
 
     std::thread _read_thread;
     std::thread _write_thread;
@@ -59,7 +63,8 @@ private:
 
     u_int16_t _videoPadding;
 
-    IProtocol*  _protocol = nullptr;
+    IProtocol *_protocol = nullptr;
+    AESCipher *_cipher = nullptr;
 };
 
 #endif /* SRC_CONNECTOR */

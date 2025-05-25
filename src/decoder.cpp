@@ -52,18 +52,18 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
         result = avcodec_alloc_context3(codec);
         if (!result)
         {
-            std::cout << "Can't load HW codec " << codec->name << ": out of memory" << std::endl;
+            std::cout << "[Video] Can't load HW codec " << codec->name << ": out of memory" << std::endl;
             break;
         }
 
         int ret = avcodec_open2(result, codec, nullptr);
         if (ret == 0)
         {
-            std::cout << "Using HW decoder: " << codec->name << std::endl;
+            std::cout << "[Video] Using HW decoder: " << codec->name << std::endl;
             return result;
         }
 
-        std::cout << "Can't load HW codec " << codec->name << ": " << Error::avErrorText(ret) << std::endl;
+        std::cout << "[Video] Can't load HW codec " << codec->name << ": " << Error::avErrorText(ret) << std::endl;
         avcodec_free_context(&result);
     }
 
@@ -71,33 +71,33 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
     codec = avcodec_find_decoder(codec_id);
     if (!codec)
     {
-        std::cout << "Decoder not found for codec id " << codec_id << std::endl;
+        std::cout << "[Video] Decoder not found for codec id " << codec_id << std::endl;
         return nullptr;
     }
 
     result = avcodec_alloc_context3(codec);
     if (!result)
     {
-        std::cout << "Failed to allocate context for codec id " << codec_id << std::endl;
+        std::cout << "[Video] Failed to allocate context for codec id " << codec_id << std::endl;
         return nullptr;
     }
 
     int ret = avcodec_open2(result, codec, nullptr);
     if (ret < 0)
     {
-        std::cout << "Failed to open software decoder " << codec->name << ": " << Error::avErrorText(ret) << std::endl;
+        std::cout << "[Video] Failed to open software decoder " << codec->name << ": " << Error::avErrorText(ret) << std::endl;
         avcodec_free_context(&result);
         return nullptr;
     }
 
-    std::cout << "Using SW decoder " << codec->name << std::endl;
+    std::cout << "[Video] Using SW decoder " << codec->name << std::endl;
     return result;
 }
 
 void Decoder::runner()
 {
     // Set thread name
-    setThreadName( "video-decoding");
+    setThreadName("video-decoding");
 
     // Load codec context
     AVCodecContext *context = load_codec(_codecId);
@@ -127,14 +127,12 @@ void Decoder::runner()
     avcodec_free_context(&context);
 
     if (_status.error())
-        std::cout << "Video decoder error: " << _status.message() << std::endl;
+        std::cout << "[Video] Decoder error: " << _status.message() << std::endl;
 }
 
 void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame)
 {
     uint32_t counter = 0;
-
-    std::cout << "Video decoder loop started" << std::endl;
 
     // Main decoding loop; runs until global_quit flag is set
     while (_active)
@@ -182,14 +180,14 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
             int send_ret = avcodec_send_packet(context, packet);
             if (send_ret != 0)
             {
-                std::cout << "Error decoding packet: " << Error::avErrorText(send_ret) << std::endl;
+                std::cout << "[Video] Can't decode packet: " << Error::avErrorText(send_ret) << std::endl;
                 continue;
             }
 
             // Receive decoded frames
             while (avcodec_receive_frame(context, frame) == 0 && _active)
             {
-                AVFrame* out = _vb->write(counter++);
+                AVFrame *out = _vb->write(counter++);
                 av_frame_unref(out);
                 av_frame_move_ref(out, frame);
                 _vb->commit();

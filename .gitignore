@@ -6,3 +6,4 @@ src/autogen
 # General files
 .*/
 .DS*
+.*settings.txt

@@ -1,6 +1,10 @@
 #include "protocol.h"
+#include "helper/protocol_const.h"
+#include "helper/functions.h"
 
 #include <cstring>
+#include <iomanip>
+#include <cctype> 
 
 Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t padding)
     : connector(padding),
@@ -22,25 +26,12 @@ Protocol::~Protocol()
 
 const char *Protocol::cmdString(int cmd)
 {
-    switch (cmd)
+    for (const ProtocolCmdEntry &entry : protocolCmdList)
     {
-    case CMD_OPEN:
-        return "Open";
-    case CMD_PLUGGED:
-        return "Plugged";
-    case CMD_UNPLUGGED:
-        return "Unplugged";
-    case CMD_TOUCH:
-        return "Touch";
-    case CMD_VIDEO_DATA:
-        return "Video";
-    case CMD_AUDIO_DATA:
-        return "Audio";
-    case CMD_SEND_FILE:
-        return "File";
-    default:
-        return "Unknown";
+        if (entry.cmd == cmd)
+            return entry.name;
     }
+    return "Unknown";
 }
 
 void Protocol::start(StatusCallback onStatus)
@@ -57,15 +48,15 @@ void Protocol::stop()
 void Protocol::sendInit(int width, int height, int fps)
 {
     uint8_t buf[28];
-    Connector::write_uint32_le(&buf[0], width);
-    Connector::write_uint32_le(&buf[4], height);
-    Connector::write_uint32_le(&buf[8], fps);
-    Connector::write_uint32_le(&buf[12], 5);
-    Connector::write_uint32_le(&buf[16], 49152);
-    Connector::write_uint32_le(&buf[20], 2);
-    Connector::write_uint32_le(&buf[24], 2);
+    write_uint32_le(&buf[0], width);
+    write_uint32_le(&buf[4], height);
+    write_uint32_le(&buf[8], fps);
+    write_uint32_le(&buf[12], 5);
+    write_uint32_le(&buf[16], 49152);
+    write_uint32_le(&buf[20], 2);
+    write_uint32_le(&buf[24], 2);
 
-    connector.send(1, buf, 28);
+    connector.send(1, true, buf, 28);
 }
 
 void Protocol::sendKey(int key)
@@ -73,9 +64,9 @@ void Protocol::sendKey(int key)
     printf("Send key %d", key);
 
     uint8_t buf[4];
-    Connector::write_uint32_le(&buf[0], key);
+    write_uint32_le(&buf[0], key);
 
-    connector.send(8, buf, 4);
+    connector.send(8, false, buf, 4);
 }
 
 void Protocol::sendFile(const char *filename, const char *value)
@@ -96,28 +87,28 @@ void Protocol::sendFile(const char *filename, const char *value)
 void Protocol::sendFile(const char *filename, int value)
 {
     uint8_t buf[4];
-    Connector::write_uint32_le(buf, value);
+    write_uint32_le(buf, value);
     sendFile(filename, buf, 4);
 }
 
 void Protocol::sendClick(float x, float y, bool down)
 {
     uint8_t buf[16];
-    Connector::write_uint32_le(buf, down ? 14 : 16);
-    Connector::write_uint32_le(buf + 4, int(10000 * x));
-    Connector::write_uint32_le(buf + 8, int(10000 * y));
-    Connector::write_uint32_le(buf + 12, 0);
-    connector.send(5, buf, 16);
+    write_uint32_le(buf, down ? 14 : 16);
+    write_uint32_le(buf + 4, int(10000 * x));
+    write_uint32_le(buf + 8, int(10000 * y));
+    write_uint32_le(buf + 12, 0);
+    connector.send(5, false, buf, 16);
 }
 
 void Protocol::sendMove(float dx, float dy)
 {
     uint8_t buf[16];
-    Connector::write_uint32_le(buf, 15);
-    Connector::write_uint32_le(buf + 4, int(10000 * dx));
-    Connector::write_uint32_le(buf + 8, int(10000 * dy));
-    Connector::write_uint32_le(buf + 12, 0);
-    connector.send(5, buf, 16);
+    write_uint32_le(buf, 15);
+    write_uint32_le(buf + 4, int(10000 * dx));
+    write_uint32_le(buf + 8, int(10000 * dy));
+    write_uint32_le(buf + 12, 0);
+    connector.send(5, false, buf, 16);
 }
 
 void Protocol::sendFile(const char *filename, const uint8_t *data, uint32_t length)
@@ -131,7 +122,7 @@ void Protocol::sendFile(const char *filename, const uint8_t *data, uint32_t leng
     uint8_t *buf = result.data();
 
     // 1) filename length (LE)
-    Connector::write_uint32_le(buf, fn_len);
+    write_uint32_le(buf, fn_len);
     buf += 4;
 
     // 2) filename bytes (including the '\0')
@@ -139,13 +130,33 @@ void Protocol::sendFile(const char *filename, const uint8_t *data, uint32_t leng
     buf += fn_len;
 
     // 3) content length (LE)
-    Connector::write_uint32_le(buf, length);
+    write_uint32_le(buf, length);
     buf += 4;
 
     // 4) content bytes
     std::memcpy(buf, data, length);
 
-    connector.send(CMD_SEND_FILE, result.data(), total);
+    connector.send(CMD_SEND_FILE, true, result.data(), total);
+}
+
+void Protocol::sendInt(uint32_t cmd, uint32_t value, bool encryption)
+{
+    uint8_t buf[4];
+    write_uint32_le(buf, value);
+    connector.send(cmd, encryption, buf, 4);
+}
+
+void Protocol::sendEncryption()
+{
+    AESCipher *cypher = connector.Cypher();
+    if (!cypher)
+    {
+        std::cout << "[Protocol] Can't enable encryption: cypher is not initalised";
+        return;
+    }
+    uint8_t buf[4];
+    write_uint32_le(buf, cypher->Seed());
+    connector.send(CMD_ENCRYPTION, false, buf, 4);
 }
 
 void Protocol::onStatus(const char *status)
@@ -158,14 +169,24 @@ void Protocol::onDevice(bool connected)
 {
     if (connected)
     {
+        if (Settings::encryption)
+            sendEncryption();
         sendInit(_width, _height, _fps);
-        sendFile("/tmp/night_mode", 0);      // 0==day, 1==night
+        if (Settings::dpi > 0)
+            sendFile("/tmp/screen_dpi", Settings::dpi);
+        sendFile("/etc/android_work_mode", 1);
+        sendFile("/tmp/night_mode", 2);      // 0==day, 1==night, 2==???
         sendFile("/tmp/hand_drive_mode", 0); // 0==left, 1==right
         sendFile("/tmp/charge_mode", 0);
         sendFile("/etc/box_name", "CarPlay");
+        if (Settings::autoconnect)
+            sendInt(CMD_CONTROL, 1002);
+        if (Settings::encryption)
+            sendEncryption();            
     }
     else
     {
+        connector.setEncryption(false);
     }
 }
 
@@ -178,7 +199,7 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     {
         if (length <= 20)
             break;
-        videoData.pushDiscard( std::make_unique<Message>(data, length, 20));
+        videoData.pushDiscard(std::make_unique<Message>(data, length, 20));
         dispose = false;
         break;
     }
@@ -222,6 +243,13 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
         phoneConnected = false;
         break;
     }
+    case CMD_ENCRYPTION:
+    {
+        if (length == 0)
+            connector.setEncryption(true);
+        print_message(cmd, length, data);            
+        break;
+    }
 
     default:
         print_message(cmd, length, data);
@@ -236,7 +264,7 @@ void Protocol::print_ints(uint32_t length, uint8_t *data, uint16_t max)
 {
     if (data && length >= 4)
     {
-        printf("  > ");
+        std::cout << "  > ";
         size_t count = length / 4;
         for (size_t i = 0; (i < count) & (i < max); ++i)
         {
@@ -245,9 +273,9 @@ void Protocol::print_ints(uint32_t length, uint8_t *data, uint16_t max)
                 ((uint32_t)data[i * 4 + 1] << 8) |
                 ((uint32_t)data[i * 4 + 2] << 16) |
                 ((uint32_t)data[i * 4 + 3] << 24);
-            printf("%u ", val);
+            std::cout << val;
         }
-        printf("\n");
+        std::cout << endl;
     }
 }
 
@@ -255,25 +283,30 @@ void Protocol::print_bytes(uint32_t length, uint8_t *data, uint16_t max)
 {
     if (data && length >= 4)
     {
-        printf("  > ");
+        std::cout << "  > ";
         for (size_t i = 0; (i < length) & (i < max); ++i)
         {
-            printf("%d ", data[i]);
+            std::cout << data[i];
         }
-        printf("\n");
+        std::cout << endl;
     }
 }
 
 void Protocol::print_message(uint32_t cmd, uint32_t length, uint8_t *data)
 {
-    printf("Cmd: %-3u %-10s Size: %-6u > ", cmd, cmdString(cmd), length);
+    std::cout << "> "
+              << std::setw(3) << std::right << static_cast<unsigned>(cmd)
+              << std::setw(8) << std::left << ("[" + std::to_string(length) + "]")
+              << std::setw(15) << std::left << cmdString(cmd);
+
     if (data && length > 0)
-        for (size_t i = 0; i < 40 && i < length; ++i)
+    {
+        for (size_t i = 0; i < 50 && i < length; ++i)
         {
             char ch = static_cast<char>(data[i]);
-            printf("%c", isprint(ch) ? ch : '.');
+            std::cout << (std::isprint(static_cast<unsigned char>(ch)) ? ch : '.');
         }
-    // for (int i = 0; i < length && i < 10; i++)
-    //     printf("%-4u", data[i]);
-    printf("\n");
+    }
+
+    std::cout << std::endl;
 }

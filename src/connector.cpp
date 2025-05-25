@@ -4,12 +4,22 @@
 #include <iostream>
 #include <condition_variable>
 
+#include "helper/protocol_const.h"
 #include "helper/functions.h"
 #include "settings.h"
 
 Connector::Connector(uint16_t videoPadding)
     : _videoPadding(videoPadding)
 {
+    try
+    {
+        _cipher = new AESCipher(ENCRYPTION_BASE);
+    }
+    catch (...)
+    {
+        _cipher = nullptr;
+    }
+
     int result = libusb_init(&_context);
     if (result < 0)
         throw std::runtime_error(std::string("Can't initialise USB: ") + libusb_error_name(result));
@@ -60,13 +70,13 @@ void Connector::stop()
 
 bool Connector::connect(uint16_t vendor_id, uint16_t product_id)
 {
-    status("Searching for device");
+    status("Searching for dongle");
 
-    std::cout << "Creating device handle" << std::endl;
     _device = libusb_open_device_with_vid_pid(_context, vendor_id, product_id);
     if (!_device)
     {
-        status("Can't find device");
+        std::cout << "[Connection] Failed to create device handle - no device" << std::endl;
+        status("Can't find dongle");
         return false;
     }
 
@@ -81,26 +91,38 @@ bool Connector::connect(uint16_t vendor_id, uint16_t product_id)
 
 bool Connector::link()
 {
-    status("Linking device");
+    int usbres = 0;
+    status("Linking dongle");
 
-    std::cout << "Reset device" << std::endl;
-    if (libusb_reset_device(_device) < 0)
+    usbres = libusb_reset_device(_device);
+    if (usbres < 0)
+    {
+        std::cout << "[Connection] Can't reset device: " << libusb_error_name(usbres) << std::endl;
         return false;
+    }
 
-    std::cout << "Set configuration" << std::endl;
-    if (libusb_set_configuration(_device, 1) < 0)
+    usbres = libusb_set_configuration(_device, 1);
+    if (usbres < 0)
+    {
+        std::cout << "[Connection] Can't set configuration: " << libusb_error_name(usbres) << std::endl;
         return false;
+    }
 
-    std::cout << "Claim interface" << std::endl;
-    if (libusb_claim_interface(_device, 0) < 0)
+    usbres = libusb_claim_interface(_device, 0);
+    if (usbres < 0)
+    {
+        std::cout << "[Connection] Can't claim interface: " << libusb_error_name(usbres) << std::endl;
         return false;
+    }
 
-    std::cout << "Get config descriptor" << std::endl;
     libusb_device *dev = libusb_get_device(_device);
     struct libusb_config_descriptor *config = nullptr;
-
-    if (libusb_get_active_config_descriptor(dev, &config) < 0)
+    usbres = libusb_get_active_config_descriptor(dev, &config);
+    if (usbres < 0)
+    {
+        std::cout << "[Connection] Can't get config: " << libusb_error_name(usbres) << std::endl;
         return false;
+    }
 
     for (int i = 0; i < config->interface[0].altsetting[0].bNumEndpoints; i++)
     {
@@ -108,18 +130,14 @@ bool Connector::link()
         if ((ep->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN)
         {
             _endpoint_in = ep->bEndpointAddress;
-            std::cout << "Found input endpoint" << std::endl;
         }
         else
         {
             _endpoint_out = ep->bEndpointAddress;
-            std::cout << "Found output endpoint" << std::endl;
         }
     }
 
-    std::cout << "Free config descriptor" << std::endl;
     libusb_free_config_descriptor(config);
-
     return true;
 }
 
@@ -135,56 +153,54 @@ void Connector::release()
 
 void Connector::status(const char *status)
 {
-    std::cout << status << std::endl;
     if (_protocol)
         _protocol->onStatus(status);
 }
 
-void Connector::write_uint32_le(uint8_t *dst, uint32_t value)
-{
-    dst[0] = value & 0xFF;
-    dst[1] = (value >> 8) & 0xFF;
-    dst[2] = (value >> 16) & 0xFF;
-    dst[3] = (value >> 24) & 0xFF;
-}
-
-int Connector::send(int cmd)
+int Connector::send(int cmd, bool encrypt, uint8_t *data, uint32_t size)
 {
     if (!_connected)
         return 0;
 
     int transferred;
     uint8_t buffer[16];
+    uint32_t magic = MAGIC;
+    encrypt = encrypt && _ecnrypt;
 
-    write_uint32_le(&buffer[0], 0x55AA55AA);
-    write_uint32_le(&buffer[4], 0);
-    write_uint32_le(&buffer[8], cmd);
-    write_uint32_le(&buffer[12], ~cmd);
+    if (encrypt && data && size > 0)
+    {
+        if (_cipher->Encrypt(data, size))
+            magic = MAGIC_ENC;
+    }
 
-    std::unique_lock<std::mutex> lock(_write_mutex);
-    libusb_bulk_transfer(_device, _endpoint_out, buffer, 16, &transferred, 0);
-
-    return transferred;
-}
-
-int Connector::send(int cmd, uint8_t *data, uint32_t size)
-{
-    if (!_connected)
-        return 0;
-
-    int transferred;
-    uint8_t buffer[16];
-
-    write_uint32_le(&buffer[0], 0x55AA55AA);
+    write_uint32_le(&buffer[0], magic);
     write_uint32_le(&buffer[4], size);
     write_uint32_le(&buffer[8], cmd);
     write_uint32_le(&buffer[12], ~cmd);
 
     std::unique_lock<std::mutex> lock(_write_mutex);
     libusb_bulk_transfer(_device, _endpoint_out, buffer, 16, &transferred, 0);
-    libusb_bulk_transfer(_device, _endpoint_out, data, size, &transferred, 0);
+    if (data && size > 0)
+        libusb_bulk_transfer(_device, _endpoint_out, data, size, &transferred, 0);
 
     return transferred;
+}
+
+void Connector::setEncryption(bool enabled)
+{
+    if (!enabled)
+    {
+        _ecnrypt = false;
+        return;
+    }
+    if (!_cipher)
+    {
+        std::cout << "[Connection] Can't enable encryption: cypher initialisation failed" << std::endl;
+        return;
+    }
+
+    std::cout << "[Connection] Encryption enabled" << std::endl;
+    _ecnrypt = true;
 }
 
 void Connector::read_loop()
@@ -196,7 +212,7 @@ void Connector::read_loop()
     uint8_t *data;
 
     // Set thread name
-    setThreadName( "protocol-reader");
+    setThreadName("protocol-reader");
     while (_active)
     {
         if (!_connected)
@@ -211,6 +227,7 @@ void Connector::read_loop()
 
         if (result == LIBUSB_ERROR_NO_DEVICE)
         {
+            std::cout << "[Connection] Device disconnected" << std::endl;
             if (_protocol)
                 _protocol->onDevice(false);
             _connected = false;
@@ -235,13 +252,29 @@ void Connector::read_loop()
         }
 
         if (!_protocol)
-            free(data);
-        else
         {
-            if (padding > 0)
-                std::fill(data + header.length, data + header.length + padding, 0);
-            _protocol->onData(header.type, header.length, data);
+            free(data);
+            continue;
         }
+
+        if (header.magic == MAGIC_ENC)
+        {
+
+            if (!_cipher)
+            {
+                std::cout << "[Connection] Received encrypted command " << header.type <<" but cipher is not initialised" << std::endl;
+                continue;
+            }
+            if (!_cipher->Decrypt(data, header.length))
+            {
+                std::cout << "[Connection] Can't decrypt command " << header.type << std::endl;
+                continue;
+            }            
+        }
+
+        if (padding > 0)
+            std::fill(data + header.length, data + header.length + padding, 0);
+        _protocol->onData(header.type, header.length, data);
     }
 }
 
@@ -258,7 +291,7 @@ void Connector::write_loop()
         _connected = connect(Settings::vendorid, Settings::productid);
         if (_connected)
         {
-            status("Starting device");
+            status("Initialising dongle");
             if (_protocol)
                 _protocol->onDevice(true);
 

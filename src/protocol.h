@@ -7,15 +7,6 @@
 #include "settings.h"
 #include "connector.h"
 
-#define MAGIC 0x55aa55aa
-
-#define CMD_OPEN 1
-#define CMD_PLUGGED 2
-#define CMD_UNPLUGGED 4
-#define CMD_TOUCH 5
-#define CMD_VIDEO_DATA 6
-#define CMD_AUDIO_DATA 7
-#define CMD_SEND_FILE 153
 
 class Protocol : public IProtocol
 {
@@ -48,6 +39,9 @@ public:
     bool phoneConnected;
 
 private:
+    void sendInt(uint32_t cmd, uint32_t value, bool encryption = true);
+    void sendEncryption();
+
     void onStatus(const char *status) override;
     void onDevice(bool connected) override;
     void onData(uint32_t cmd, uint32_t length, uint8_t *data) override;

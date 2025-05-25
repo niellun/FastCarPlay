@@ -21,7 +21,7 @@ TARGET_NAME := app
 
 all: debug
 
-LDOPTIONS := -lSDL2 -lSDL2_ttf -lavformat -lavcodec -lavutil -lswscale -lusb-1.0
+LDOPTIONS := -lSDL2 -lSDL2_ttf -lavformat -lavcodec -lavutil -lswscale -lusb-1.0 -lssl -lcrypto
 LDFLAGS := 
 CXXCOMMON := -Wall -Isrc
 

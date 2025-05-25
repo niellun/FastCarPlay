@@ -99,7 +99,7 @@ void PcmAudio::runner()
             device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
             if (device == 0)
             {
-                std::cerr << "Failed to open audio: " << SDL_GetError() << std::endl;
+                std::cerr << "[Audio] Failed to open audio: " << SDL_GetError() << std::endl;
                 continue;
             }
             // Calculate new buffer target: 0.5s

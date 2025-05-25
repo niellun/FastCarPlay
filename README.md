@@ -10,11 +10,11 @@ Devices might have different vendor and product id's. Check your with lsusb and 
 ## Dependencies
 The project is based on SDL2, FFMPEG, LIBUSB. It use XXD for resource embedding.
 ```
-sudo apt install build-essential xxd libsdl2-dev libsdl2-ttf-dev libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libusb-1.0-0-dev
+sudo apt install build-essential xxd libsdl2-dev libsdl2-ttf-dev libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libusb-1.0-0-dev libssl-dev
 ```
 To run the application you also need to install runtime
 ```
-sudo apt install ffmpeg libsdl2-2.0-0 libsdl2-ttf-2.0-0 libavformat59 libavcodec61 libavutil57 libswscale7 libusb-1.0-0
+sudo apt install ffmpeg libsdl2-2.0-0 libsdl2-ttf-2.0-0 libavformat59 libavcodec61 libavutil57 libswscale7 libusb-1.0-0 libssl3
 ```
 
 ## Build and run
@@ -39,7 +39,7 @@ Bus 003 Device 066: ID 1314:1520 Magic Communication Tec. Auto Box
 So in my case ID 1314:1520 shows idVendor 1314 and idProduct 1520. We need to use those to create udev rules. If yours are different you also need to put them in settings.txt and run application with settings.txt as argument. Remember that in settings.txt values are in decimal, so you need to convert hex values to base 10 first. 
 Create udev rules, replace <__Vendor__> <__Product__> and <__Your user__> with your informations
 ```
-echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="<__Vendor__>", ATTRS{idProduct}=="<__Product__>", GROUP="<__Your user__>", MODE="0660"' | sudo tee /etc/udev/rules.d/50-carlinkit.rules
+echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="<Vendor>", ATTRS{idProduct}=="<Product>", GROUP="<Your user>", MODE="0660"' | sudo tee /etc/udev/rules.d/50-carlinkit.rules
 ## example
 ## UBSYSTEM=="usb", ATTRS{idVendor}=="1314", ATTRS{idProduct}=="1520", GROUP="linux", MODE="0660"
 sudo udevadm control --reload-rules

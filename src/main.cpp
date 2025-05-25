@@ -207,7 +207,7 @@ void application()
     DrawText(textFont, status);
     SDL_RenderPresent(renderer);
 
-    std::cout << " > Application loop" << std::endl;
+    std::cout << "[Main] Loop" << std::endl;
     Renderer videoRenderer(renderer);
     bool dirty = true;
     bool connected = false;
@@ -276,7 +276,7 @@ void application()
             SDL_Delay(frameDelay - frameTime); // Sleep only the remaining time
         }
     }
-    std::cout << " > Application stopping" << std::endl;
+    std::cout << "[Main] Stopping" << std::endl;
     SDL_HideWindow(window);
 }
 
@@ -343,9 +343,9 @@ int main(int argc, char **argv)
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer)
     {
-        std::cout << " > Application started" << std::endl;
+        std::cout << "[Main] Started" << std::endl;
         application();
-        std::cout << " > Application finish" << std::endl;
+        std::cout << "[Main] Finish" << std::endl;
         SDL_DestroyRenderer(renderer);
     }
     else

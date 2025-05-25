@@ -6,10 +6,14 @@
 # Application starts in full screen
 #fullscreen = true
 
+
 # Application drawing settings widthxheight
 #width = 720
 #height = 576
 #fps = 60  
+
+# Target DPI reported to device. Set 0 for default
+#dpi = 0
 
 # Requested image from phone 
 #source-width = 720
@@ -34,10 +38,19 @@
 #scaler = 2
 
 # Enable logging
-logging = true 
+#logging = false 
 
 # Size of video and audio buffers. Increase if you see artifacts
 #queue-size = 32
 
 # Font size for messgaes on screen
 #font-size = 30
+
+# USB communication protocol encryption
+# From 2024 Carlinkit has an optinal USB protocol encryption
+# It can happened that it will become mandatory and device will not work withou it
+# So if you have updated your device and it stop working try to enable encryption
+#encryption = false
+
+# Enable automatic connection to wireless devices
+#autoconnect = true
