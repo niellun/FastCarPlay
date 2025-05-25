@@ -29,4 +29,12 @@ inline void write_uint32_le(uint8_t *dst, uint32_t value)
     dst[3] = (value >> 24) & 0xFF;
 }
 
+inline void execute(const char* path) {
+    if (!path || *path == '\0') {
+        throw std::invalid_argument("Program path cannot be empty");
+    }
+
+    std::system(path);
+}
+
 #endif /* SRC_HELPER_FUNCTIONS */

@@ -43,7 +43,7 @@
 # Size of video and audio buffers. Increase if you see artifacts
 #queue-size = 32
 
-# Font size for messgaes on screen
+# Font size for messgaes on screen. Set to 0 is you do not want any
 #font-size = 30
 
 # USB communication protocol encryption
@@ -54,3 +54,20 @@
 
 # Enable automatic connection to wireless devices
 #autoconnect = true
+
+# Run script or app on phone connected and disconnected. 
+# This script/app should be fast, otherwise it will block system. 
+# If you need to start application in background use scripts with fork 
+# 
+#   #!/bin/bash
+#   MyApp &
+#   echo $! > app.pid
+#
+#   #!/bin/bash
+#   if [ -f app.pid ]; then
+#       kill $(cat app.pid)
+#       rm app.pid
+#   fi
+#
+#on-connect-script = 
+#on-disconnect-script = 

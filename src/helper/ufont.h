@@ -9,6 +9,9 @@ class UFont
 public:
     UFont(const void *font_data, int data_size, int ptsize)
     {
+        if(ptsize < 1)
+            return;
+
         SDL_RWops *font_rw = SDL_RWFromConstMem(font_data, data_size);
         if (!font_rw)
         {

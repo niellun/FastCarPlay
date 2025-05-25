@@ -13,7 +13,7 @@ class ISetting
 public:
     std::string name;
     virtual void parse(std::string &str) = 0;
-    virtual std::string asString() const = 0;    
+    virtual std::string asString() const = 0;
 };
 
 // Holds the global registry
@@ -49,9 +49,9 @@ public:
     {
         try
         {
-            std::transform(str.begin(), str.end(), str.begin(), ::tolower);
             if constexpr (std::is_same_v<T, bool>)
             {
+                std::transform(str.begin(), str.end(), str.begin(), ::tolower);
                 if (str == "1" || str == "true")
                     value = true;
                 else if (str == "0" || str == "false")

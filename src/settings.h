@@ -23,6 +23,8 @@ public:
     static inline Setting<int> fontSize{"font-size", 30};
     static inline Setting<bool> encryption{"encryption", false};
     static inline Setting<bool> autoconnect{"autoconnect", true};
+    static inline Setting<std::string> onConnect{"on-connect-script", ""};
+    static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};        
 
     static void load(const std::string &filename);
     static void print();

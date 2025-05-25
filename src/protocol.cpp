@@ -4,7 +4,7 @@
 
 #include <cstring>
 #include <iomanip>
-#include <cctype> 
+#include <cctype>
 
 Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t padding)
     : connector(padding),
@@ -182,12 +182,26 @@ void Protocol::onDevice(bool connected)
         if (Settings::autoconnect)
             sendInt(CMD_CONTROL, 1002);
         if (Settings::encryption)
-            sendEncryption();            
+            sendEncryption();
     }
     else
     {
+        onPhone(false);
         connector.setEncryption(false);
     }
+}
+
+void Protocol::onPhone(bool connected)
+{
+    if (connected == phoneConnected)
+        return;
+    phoneConnected = connected;
+
+    if (connected && Settings::onConnect.value.length() > 1)
+        execute(Settings::onConnect.value.c_str());
+
+    if (!connected && Settings::onDisconnect.value.length() > 1)
+        execute(Settings::onDisconnect.value.c_str());
 }
 
 void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
@@ -235,19 +249,19 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     }
     case CMD_PLUGGED:
     {
-        phoneConnected = true;
+        onPhone(true);
         break;
     }
     case CMD_UNPLUGGED:
     {
-        phoneConnected = false;
+        onPhone(false);
         break;
     }
     case CMD_ENCRYPTION:
     {
         if (length == 0)
             connector.setEncryption(true);
-        print_message(cmd, length, data);            
+        print_message(cmd, length, data);
         break;
     }
 

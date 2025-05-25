@@ -50,6 +50,8 @@ private:
     void print_ints(uint32_t length, uint8_t *data, uint16_t max);
     void print_bytes(uint32_t length, uint8_t *data, uint16_t max);
 
+    void onPhone(bool connected);
+
     uint16_t _width;
     uint16_t _height;
     uint16_t _fps;

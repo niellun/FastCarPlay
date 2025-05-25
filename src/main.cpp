@@ -108,6 +108,10 @@ void processKey(Protocol &protocol, SDL_Keysym key)
         SDL_SetWindowBordered(window, fullscreen ? SDL_FALSE : SDL_TRUE);
         break;
 
+    case SDLK_q:
+        active = false;
+        break;        
+
     case SDLK_LEFT:
         protocol.sendKey(100);
         break;
