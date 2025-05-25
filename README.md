@@ -3,7 +3,7 @@ This is C++ implementation of carplay receiver for "Autobox" dongles.
 The purpose of the project was to make application lightweight to run on Raspberry PI Zero 2W and use hardware decoding.
 
 # Dongles
-The dongles are readily available from Amazon or Aliexpress labeled by !["Carlinkit"](https://www.carlinkit.com/).
+The dongles are readily available from Amazon or Aliexpress labeled by Carlinkit. They also seems to have official web site https://www.carlinkit.com/.
 Devices might have different vendor and product id's. Check your with lsusb and update settings if necessary.
 
 # Setup
@@ -25,6 +25,27 @@ make clean
 make release
 ./out/app ./settings.txt
 ```
+
+## USB Permissions and device id
+On linux app may not have permisiions to read USB device. You need to create udev rule to grant persmissions for dongle.
+First you need to figure out your idVendor and idProduct. 
+```
+lsusb
+```
+You will see list of devices, try to find the one that looks like dongle. Also you might need to run lsusb several time, cause my dongle seems to be disconnecting all the time. You need to find line like
+```
+Bus 003 Device 066: ID 1314:1520 Magic Communication Tec. Auto Box
+```
+So in my case ID 1314:1520 shows idVendor 1314 and idProduct 1520. We need to use those to create udev rules. If yours are different you also need to put them in settings.txt and run application with settings.txt as argument. Remember that in settings.txt values are in decimal, so you need to convert hex values to base 10 first. 
+Create udev rules, replace <__Vendor__> <__Product__> and <__Your user__> with your informations
+```
+echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="<__Vendor__>", ATTRS{idProduct}=="<__Product__>", GROUP="<__Your user__>", MODE="0660"' | sudo tee /etc/udev/rules.d/50-carlinkit.rules
+## example
+## UBSYSTEM=="usb", ATTRS{idVendor}=="1314", ATTRS{idProduct}=="1520", GROUP="linux", MODE="0660"
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
 
 ## Customisation
 You can change font and background images by replacing files in ./src/resource
@@ -79,6 +100,7 @@ The project is inspired and based on great work done by other developers:
 - ![pycarplay by electric-monk](https://github.com/electric-monk/pycarplay)
 - ![carplay-receiver by harrylepotter](https://github.com/harrylepotter/carplay-receiver)
 - ![react-carplay by rhysmorgan134](https://github.com/rhysmorgan134/react-carplay)
+- ![carplay-client by rayphee](https://github.com/rayphee/carplay-client)
 
 The project is licenced under GPL-3 licence. See LICENCE for details.
 The project is using ![Open Sans](https://fonts.google.com/specimen/Open+Sans) font. See FONT_LICENCE for details.

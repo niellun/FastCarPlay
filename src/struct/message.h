@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <cstdlib>
 
 #define OFFSET_AUDIO_FORMAT 0
 
