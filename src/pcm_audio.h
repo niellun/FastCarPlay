@@ -11,6 +11,8 @@
 #include "struct/message.h"
 #include "helper/error.h"
 
+#define NO_DATA_FRAMES 20
+
 struct ChannelConfig
 {
     int rate;
@@ -40,15 +42,24 @@ public:
     void setVolume(float vol);
 
 private:
-    ChannelConfig getConfig(int type) const;
     void runner();
     void loop(SDL_AudioDeviceID device);
 
-    AtomicQueue<Message> *_data = nullptr;
+    static void callback(void *userdata, Uint8 *stream, int len);
+    static ChannelConfig _configTable[];
+    static ChannelConfig getConfig(int type);
 
     float _volume = 1.0f;
 
+    AtomicQueue<Message> *_data;
+    ChannelConfig _config;
+    int _offset;
+    int _nodata;
+
     std::thread _thread;
+    std::mutex _mtx;
+    std::condition_variable _cv;
+    std::atomic<bool> _reconfig{false};
     std::atomic<bool> _active{false};
 };
 

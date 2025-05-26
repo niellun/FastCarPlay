@@ -1,5 +1,14 @@
 #include "pcm_audio.h"
 #include "helper/functions.h"
+#include "settings.h"
+
+ChannelConfig PcmAudio::_configTable[] = {
+    {8000, 1},  // type = 3
+    {48000, 2}, // type = 4
+    {16000, 1}, // type = 5
+    {24000, 1}, // type = 6
+    {16000, 2}, // type = 7
+};
 
 // Implementation
 PcmAudio::PcmAudio() {}
@@ -7,6 +16,60 @@ PcmAudio::PcmAudio() {}
 PcmAudio::~PcmAudio()
 {
     stop();
+}
+
+void PcmAudio::callback(void *userdata, Uint8 *stream, int len)
+{
+    PcmAudio *self = static_cast<PcmAudio *>(userdata);
+    const Message *segment = self->_data->peek();
+    if (segment && self->_offset == 0 && getConfig(segment->getInt(OFFSET_AUDIO_FORMAT)) != self->_config)
+    {
+        self->_reconfig = true;
+        self->_cv.notify_one();
+    }
+    while (len > 0)
+    {
+        if (segment == nullptr || self->_reconfig)
+        {
+            std::fill_n(stream, len, 0);
+            if (self->_nodata++ > NO_DATA_FRAMES)
+            {
+                self->_reconfig = true;
+                self->_cv.notify_one();
+            }
+            return;
+        }
+
+        self->_nodata = 0;
+        int remain = segment->length() - self->_offset;
+        uint8_t *data = segment->data() + self->_offset;
+
+        if (remain > len)
+        {
+            std::memcpy(stream, data, len);
+            self->_offset = self->_offset + len;
+            return;
+        }
+
+        std::memcpy(stream, data, remain);
+        len = len - remain;
+        stream = stream + remain;
+        self->_data->pop();
+        self->_offset = 0;
+        segment = self->_data->peek();
+        if (segment && getConfig(segment->getInt(OFFSET_AUDIO_FORMAT)) != self->_config)
+        {
+            self->_reconfig = true;
+            self->_cv.notify_one();
+        }
+    }
+}
+
+ChannelConfig PcmAudio::getConfig(int type)
+{
+    if (type >= 3 && type <= 7)
+        return _configTable[type - 3];
+    return {44100, 2};
 }
 
 void PcmAudio::setVolume(float vol)
@@ -39,23 +102,7 @@ void PcmAudio::stop()
         return;
     _active = false;
     _data->notify();
-    if (_thread.joinable())
-        _thread.join();
-}
-
-static ChannelConfig configTable[] = {
-    {8000, 1},  // type = 3
-    {48000, 2}, // type = 4
-    {16000, 1}, // type = 5
-    {24000, 1}, // type = 6
-    {16000, 2}, // type = 7
-};
-
-ChannelConfig PcmAudio::getConfig(int type) const
-{
-    if (type >= 3 && type <= 7)
-        return configTable[type - 3];
-    return {44100, 2};
+    _cv.notify_all();
 }
 
 void PcmAudio::runner()
@@ -64,72 +111,55 @@ void PcmAudio::runner()
 
     SDL_AudioDeviceID device = 0;
     SDL_AudioSpec spec;
-    size_t bufferedBytes = 0;
-    bool unpaused = false;
-    size_t targetBytes = 0;
-    ChannelConfig config = {0, 0};
 
     while (_active)
     {
-        unique_ptr<Message> segment = _data->wait(_active);
-        if (!_active)
-            break;
+        printf("AUDIO - WAIT BUFFER\n");
+        _data->wait(_active, Settings::audioDelay);
+        const Message *segment = _data->peek();
+        if (!segment)
+            continue;
 
-        ChannelConfig segmentConfig = getConfig(segment->getInt(OFFSET_AUDIO_FORMAT));
-
-        // If settings changed, (re)open audio device
-        if (device == 0 || config != segmentConfig)
+        printf("AUDIO - START\n");
+        _config = getConfig(segment->getInt(OFFSET_AUDIO_FORMAT));
+        if (device != 0)
         {
-            config = segmentConfig;
-
-            // Close existing device
-            if (device != 0)
-            {
-                SDL_CloseAudioDevice(device);
-                device = 0;
-            }
-            // Configure new spec
-            SDL_zero(spec);
-            spec.freq = config.rate;
-            spec.format = AUDIO_S16SYS;
-            spec.channels = config.channels;
-            spec.samples = 4096;
-            spec.callback = nullptr;
-
-            device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
-            if (device == 0)
-            {
-                std::cerr << "[Audio] Failed to open audio: " << SDL_GetError() << std::endl;
-                continue;
-            }
-            // Calculate new buffer target: 0.5s
-            targetBytes = config.rate * config.channels * sizeof(int16_t) / 2;
-            bufferedBytes = 0;
-            unpaused = false;
-            // Start paused
             SDL_PauseAudioDevice(device, 1);
+            SDL_CloseAudioDevice(device);
+            device = 0;
         }
 
-        // Apply volume in-place
-        int16_t *samples = reinterpret_cast<int16_t *>(segment->data());
-        size_t count = segment->length() / sizeof(int16_t);
-        for (size_t i = 0; i < count; ++i)
+        // Configure new spec
+        SDL_zero(spec);
+        spec.freq = _config.rate;
+        spec.format = AUDIO_S16SYS;
+        spec.channels = _config.channels;
+        spec.samples = 4096;
+        spec.callback = callback;
+        spec.userdata = this;
+
+        _reconfig = false;
+        _offset = 0;
+        _nodata = 0;
+
+        device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
+        if (device == 0)
         {
-            samples[i] = static_cast<int16_t>(samples[i] * _volume);
+            std::cerr << "[Audio] Failed to open audio: " << SDL_GetError() << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
         }
+        SDL_PauseAudioDevice(device, 0);
 
-        // Queue audio
-        SDL_QueueAudio(device, segment->data(), segment->length());
-        bufferedBytes += segment->length();
-
-        // Unpause when enough buffered
-        if (!unpaused && bufferedBytes >= targetBytes)
-        {
-            SDL_PauseAudioDevice(device, 0);
-            unpaused = true;
-        }
+        printf("AUDIO - SLEED %b\n", _reconfig.load() || !_active.load());
+        std::unique_lock<std::mutex> lock(_mtx);
+        _cv.wait(lock, [&]
+                 { return _reconfig.load() || !_active.load(); });
     }
 
     if (device)
+    {
+        SDL_PauseAudioDevice(device, 1);
         SDL_CloseAudioDevice(device);
+    }
 }

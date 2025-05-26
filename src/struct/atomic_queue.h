@@ -31,11 +31,11 @@ public:
         _first = (_first + 1) % _size;
         _data[_first] = std::move(obj);
         ++_count;
-        _lock.notify_one();        
+        _lock.notify_one();
         return true;
     }
 
-     bool pushReplace(unique_ptr<T> obj)
+    bool pushReplace(unique_ptr<T> obj)
     {
         if (_count == _size)
         {
@@ -46,8 +46,15 @@ public:
         _first = (_first + 1) % _size;
         _data[_first] = std::move(obj);
         ++_count;
-        _lock.notify_one();        
+        _lock.notify_one();
         return true;
+    }
+
+    const T *peek()
+    {
+        if (_count == 0)
+            return nullptr;
+        return _data[(_last + 1) % _size].get();
     }
 
     unique_ptr<T> pop()
@@ -61,20 +68,14 @@ public:
         return item;
     }
 
-    unique_ptr<T> wait(atomic<bool> &waitFlag)
+    bool wait(atomic<bool> &waitFlag, int count = 0)
     {
         unique_lock<std::mutex> lock(_mtx);
 
+        bool exit = _count > count;
         _lock.wait(lock, [&]
-                   { return _count > 0 || !waitFlag; });
-
-        if (!waitFlag)
-            return nullptr;
-
-        _last = (_last + 1) % _size;
-        auto item = std::move(_data[_last]);
-        --_count;
-        return item;
+                   { return _count > count || !waitFlag; });
+        return !exit;
     }
 
     void clear()

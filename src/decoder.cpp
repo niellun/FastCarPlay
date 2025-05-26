@@ -135,14 +135,11 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
     uint32_t counter = 0;
 
     // Main decoding loop; runs until global_quit flag is set
+    _data->wait(_active);
     while (_active)
     {
         // Get raw data segment from queue
-        std::unique_ptr<Message> segment = _data->wait(_active);
-
-        if (!_active)
-            continue;
-
+        std::unique_ptr<Message> segment = _data->pop();
         uint8_t *data_ptr = segment->data();
         int data_size = segment->length();
 
@@ -193,5 +190,7 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
                 _vb->commit();
             }
         }
+
+        _data->wait(_active);
     }
 }

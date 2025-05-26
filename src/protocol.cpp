@@ -8,10 +8,10 @@
 
 Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t padding)
     : connector(padding),
-      videoData(Settings::queue),
-      audioStream0(Settings::queue),
-      audioStream1(Settings::queue),
-      audioStream2(Settings::queue),
+      videoData(Settings::videoQueue),
+      audioStream0(Settings::audioQueue),
+      audioStream1(Settings::audioQueue),
+      audioStream2(Settings::audioQueue),
       phoneConnected(false),
       _width(width),
       _height(height),
