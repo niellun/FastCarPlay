@@ -30,6 +30,12 @@ Connector::~Connector()
 {
     stop();
 
+    if (_cipher)
+    {
+        delete _cipher;
+        _cipher = nullptr;
+    }
+
     if (_device)
     {
         libusb_release_interface(_device, 0);
@@ -53,7 +59,6 @@ void Connector::start(IProtocol *protocol)
 
     _active = true;
     _write_thread = std::thread(&Connector::write_loop, this);
-    _read_thread = std::thread(&Connector::read_loop, this);
 }
 
 void Connector::stop()
@@ -289,6 +294,148 @@ void Connector::printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool 
     std::cout << oss.str() << std::endl;
 }
 
+// In Connector.cpp:
+void Connector::async_read_loop()
+{
+    setThreadName("protocol-reader");
+
+    // Allocate and submit the first header transfer
+    libusb_transfer *transfer = libusb_alloc_transfer(0);
+    libusb_fill_bulk_transfer(
+        transfer,
+        _device,
+        _endpoint_in,
+        reinterpret_cast<uint8_t *>(&_header),
+        sizeof(Header),
+        &Connector::header_cb,
+        this,
+        READ_TIMEOUT);
+    libusb_submit_transfer(transfer);
+
+    // Event loop
+    while (_connected && _active)
+    {
+        struct timeval tv{1, 0};
+        libusb_handle_events_timeout(_context, &tv);
+    }
+}
+
+void LIBUSB_CALL Connector::header_cb(libusb_transfer *transfer)
+{
+    Connector *self = static_cast<Connector *>(transfer->user_data);
+
+    if (!self->_active)
+    {
+        libusb_free_transfer(transfer);
+        return;
+    }
+
+    if (transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
+    {
+        std::cout << "[Connection] Device disconnected\n";
+        if (self->_protocol)
+            self->_protocol->onDevice(false);
+        self->_connected = false;
+        libusb_free_transfer(transfer);
+        return;
+    }
+
+    libusb_transfer *next = libusb_alloc_transfer(0);
+    if (transfer->status == LIBUSB_TRANSFER_COMPLETED && transfer->actual_length == sizeof(Header))
+    {
+        Header *header = reinterpret_cast<Header *>(transfer->buffer);
+        if (header->length == 0)
+        {
+            if (self->_protocol)
+                self->_protocol->onData(header->type, 0, nullptr);
+        }
+        else
+        {
+            int size = header->length + (header->type == 6 ? self->_videoPadding : 0);
+
+            libusb_free_transfer(transfer);
+            libusb_fill_bulk_transfer(
+                next,
+                self->_device,
+                self->_endpoint_in,
+                reinterpret_cast<uint8_t *>(malloc(size)),
+                size,
+                &Connector::payload_cb,
+                self,
+                READ_TIMEOUT);
+            libusb_submit_transfer(next);
+            return;
+        }
+    }
+
+    libusb_free_transfer(transfer);
+    libusb_fill_bulk_transfer(
+        next,
+        self->_device,
+        self->_endpoint_in,
+        reinterpret_cast<uint8_t *>(&self->_header),
+        sizeof(Header),
+        &Connector::header_cb,
+        self,
+        READ_TIMEOUT);
+    libusb_submit_transfer(next);
+}
+
+void LIBUSB_CALL Connector::payload_cb(libusb_transfer *transfer)
+{
+    Connector *self = static_cast<Connector *>(transfer->user_data);
+
+    if (!self->_active)
+    {
+        free(transfer->buffer);
+        libusb_free_transfer(transfer);
+        return;
+    }
+
+    if (transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
+    {
+        std::cout << "[Connection] Device disconnected\n";
+        if (self->_protocol)
+            self->_protocol->onDevice(false);
+        self->_connected = false;
+        free(transfer->buffer);
+        libusb_free_transfer(transfer);
+        return;
+    }
+
+    if (transfer->status == LIBUSB_TRANSFER_COMPLETED && transfer->actual_length == self->_header.length && self->_protocol)
+    {
+        if (self->_header.magic == MAGIC_ENC && self->_cipher)
+            self->_cipher->Decrypt(transfer->buffer, self->_header.length);
+
+#ifdef PROTOCOL_DEBUG
+        printMessage(self->_header.type, self->_header.length, transfer->buffer, self->_header.magic == MAGIC_ENC, false);
+#endif
+
+        if (self->_header.type == 6 && self->_videoPadding > 0)
+            std::fill(transfer->buffer + self->_header.length, transfer->buffer + self->_header.length + self->_videoPadding, 0);
+        self->_protocol->onData(self->_header.type, self->_header.length, transfer->buffer);
+    }
+    else
+    {
+        free(transfer->buffer);
+    }
+
+    libusb_free_transfer(transfer);
+
+    libusb_transfer *next = libusb_alloc_transfer(0);
+    libusb_fill_bulk_transfer(
+        next,
+        self->_device,
+        self->_endpoint_in,
+        reinterpret_cast<uint8_t *>(&self->_header),
+        sizeof(Header),
+        &Connector::header_cb,
+        self,
+        READ_TIMEOUT);
+    libusb_submit_transfer(next);
+}
+
 void Connector::read_loop()
 {
     std::mutex mtx;
@@ -299,16 +446,8 @@ void Connector::read_loop()
 
     // Set thread name
     setThreadName("protocol-reader");
-    while (_active)
+    while (_active && _connected)
     {
-        if (!_connected)
-        {
-            std::unique_lock<std::mutex> lock(mtx);
-            cv.wait_for(lock, std::chrono::seconds(1), [&]()
-                        { return !_active.load(); });
-            continue;
-        }
-
         int result = libusb_bulk_transfer(_device, _endpoint_in, reinterpret_cast<uint8_t *>(&header), sizeof(Header), &transferred, READ_TIMEOUT);
 
         if (result == LIBUSB_ERROR_NO_DEVICE)
@@ -383,6 +522,8 @@ void Connector::write_loop()
         {
             status("Initialising dongle");
             std::cout << "[Connection] Device connected" << std::endl;
+
+            _read_thread = std::thread(&Connector::async_read_loop, this);
             if (_protocol)
                 _protocol->onDevice(true);
 

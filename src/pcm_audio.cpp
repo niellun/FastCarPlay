@@ -16,6 +16,8 @@ PcmAudio::PcmAudio() {}
 PcmAudio::~PcmAudio()
 {
     stop();
+    if (_thread.joinable())
+        _thread.join();
 }
 
 void PcmAudio::callback(void *userdata, Uint8 *stream, int len)

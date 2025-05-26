@@ -24,7 +24,7 @@
 struct Header
 {
     uint32_t magic;
-    uint32_t length;
+    int32_t length;
     uint32_t type;
     uint32_t typecheck;
 };
@@ -59,6 +59,11 @@ private:
     static void printBytes(uint32_t length, uint8_t *data, uint16_t max);
     static const char *cmdString(int cmd);
     static void printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool encrypted, bool out);
+
+    void async_read_loop();
+    static void LIBUSB_CALL header_cb(libusb_transfer *transfer);
+    static void LIBUSB_CALL payload_cb(libusb_transfer *transfer);
+    Header _header;
 
     libusb_context *_context = nullptr;
     libusb_device_handle *_device = nullptr;
