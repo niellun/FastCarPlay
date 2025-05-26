@@ -24,7 +24,8 @@ public:
     static inline Setting<bool> encryption{"encryption", false};
     static inline Setting<bool> autoconnect{"autoconnect", true};
     static inline Setting<std::string> onConnect{"on-connect-script", ""};
-    static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};        
+    static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};       
+    static inline Setting<int> protocolDebug{"protocol-debug", 0};       
 
     static void load(const std::string &filename);
     static void print();

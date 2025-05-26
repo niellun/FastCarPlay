@@ -20,6 +20,7 @@
 #define CMD_JSON_CONTROL 25
 #define CMD_MANUFACTURER 20
 #define CMD_UNKNOWN_38 38
+#define CMD_MEDIA_INFO 42
 #define CMD_SEND_FILE 153
 #define CMD_UNKNOWN_136 136
 #define CMD_DAYNIGHT 162
@@ -48,10 +49,12 @@ const ProtocolCmdEntry protocolCmdList[] = {
     {CMD_DEVICE_LIST, "Device List"},
     {CMD_JSON_CONTROL, "Control JSON"},
     {CMD_MANUFACTURER, "Manufacturer"},
+    {CMD_MEDIA_INFO, "Media info"},
     {CMD_SEND_FILE, "File"},
     {CMD_DAYNIGHT, "DeyNight Mode"},
     {CMD_HEARTBEAT, "Heartbeat"},
     {CMD_VERSION, "Version"},
     {CMD_ENCRYPTION, "Encryption"}};
+
 
 #endif /* SRC_HELPER_PROTOCOL_CONST */

@@ -24,16 +24,6 @@ Protocol::~Protocol()
     stop();
 }
 
-const char *Protocol::cmdString(int cmd)
-{
-    for (const ProtocolCmdEntry &entry : protocolCmdList)
-    {
-        if (entry.cmd == cmd)
-            return entry.name;
-    }
-    return "Unknown";
-}
-
 void Protocol::start(StatusCallback onStatus)
 {
     _statusCallback = onStatus;
@@ -197,6 +187,8 @@ void Protocol::onPhone(bool connected)
         return;
     phoneConnected = connected;
 
+    std::cout << (connected ? "[Protocol] Phone connected" : "[Protocol] Phone disconnected") << std::endl;
+
     if (connected && Settings::onConnect.value.length() > 1)
         execute(Settings::onConnect.value.c_str());
 
@@ -221,7 +213,6 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     {
         if (length <= 13)
         {
-            print_message(cmd, length, data);
             break;
         }
         int channel = 0;
@@ -244,83 +235,22 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
             dispose = false;
             break;
         }
-        print_message(cmd, length, data);
         break;
     }
     case CMD_PLUGGED:
-    {
         onPhone(true);
         break;
-    }
+
     case CMD_UNPLUGGED:
-    {
         onPhone(false);
         break;
-    }
+
     case CMD_ENCRYPTION:
-    {
         if (length == 0)
             connector.setEncryption(true);
-        print_message(cmd, length, data);
-        break;
-    }
-
-    default:
-        print_message(cmd, length, data);
         break;
     }
 
     if (dispose && length > 0 && data)
         free(data);
-}
-
-void Protocol::print_ints(uint32_t length, uint8_t *data, uint16_t max)
-{
-    if (data && length >= 4)
-    {
-        std::cout << "  > ";
-        size_t count = length / 4;
-        for (size_t i = 0; (i < count) & (i < max); ++i)
-        {
-            uint32_t val =
-                ((uint32_t)data[i * 4 + 0]) |
-                ((uint32_t)data[i * 4 + 1] << 8) |
-                ((uint32_t)data[i * 4 + 2] << 16) |
-                ((uint32_t)data[i * 4 + 3] << 24);
-            std::cout << val;
-        }
-        std::cout << endl;
-    }
-}
-
-void Protocol::print_bytes(uint32_t length, uint8_t *data, uint16_t max)
-{
-    if (data && length >= 4)
-    {
-        std::cout << "  > ";
-        for (size_t i = 0; (i < length) & (i < max); ++i)
-        {
-            std::cout << data[i];
-        }
-        std::cout << endl;
-    }
-}
-
-void Protocol::print_message(uint32_t cmd, uint32_t length, uint8_t *data)
-{
-    std::cout << "> "
-              << std::setw(3) << std::right << static_cast<unsigned>(cmd)
-              << std::setw(8) << std::left << ("[" + std::to_string(length) + "]")
-              << std::setw(15) << std::left << cmdString(cmd);
-
-    if (data && length > 0)
-    {
-        for (size_t i = 0; i < 50 && i < length; ++i)
-        {
-            char ch = static_cast<char>(data[i]);
-            std::cout << (std::isprint(static_cast<unsigned char>(ch)) ? ch : '.');
-        }
-    }
-
-    std::cout << std::endl;
 }

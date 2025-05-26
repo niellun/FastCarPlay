@@ -26,13 +26,14 @@ LDFLAGS :=
 CXXCOMMON := -Wall -Isrc
 
 debug: BUILD_TYPE := debug
-debug: CXXFLAGS := -g -O0 -fsanitize=address -fno-omit-frame-pointer
+debug: CXXFLAGS := -g -O0 -fsanitize=address -fno-omit-frame-pointer -DPROTOCOL_DEBUG
 debug: LDFLAGS += -fsanitize=address -fno-omit-frame-pointer
 debug: TARGET := $(TARGET_NAME)-debug
 debug: prepare
 
 release: BUILD_TYPE := release
-release: CXXFLAGS := -O2
+release: CXXFLAGS := -O2 -march=native -flto -fno-plt -fdata-sections -ffunction-sections -DNDEBUG
+release: LDFLAGS += -Wl,--gc-sections -flto
 release: TARGET := $(TARGET_NAME)
 release: prepare
 

@@ -7,7 +7,6 @@
 #include "settings.h"
 #include "connector.h"
 
-
 class Protocol : public IProtocol
 {
 
@@ -45,10 +44,6 @@ private:
     void onStatus(const char *status) override;
     void onDevice(bool connected) override;
     void onData(uint32_t cmd, uint32_t length, uint8_t *data) override;
-
-    void print_message(uint32_t cmd, uint32_t length, uint8_t *data);
-    void print_ints(uint32_t length, uint8_t *data, uint16_t max);
-    void print_bytes(uint32_t length, uint8_t *data, uint16_t max);
 
     void onPhone(bool connected);
 

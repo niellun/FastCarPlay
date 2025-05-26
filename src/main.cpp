@@ -110,7 +110,7 @@ void processKey(Protocol &protocol, SDL_Keysym key)
 
     case SDLK_q:
         active = false;
-        break;        
+        break;
 
     case SDLK_LEFT:
         protocol.sendKey(100);
@@ -131,9 +131,15 @@ void processKey(Protocol &protocol, SDL_Keysym key)
     }
 }
 
-void processEvents(Protocol &protocol)
+void processEvents(Protocol &protocol, bool processMouse)
 {
     SDL_Event e;
+    int motionX = -1;
+    int motionY = -1;
+    int downX = -1;
+    int downY = -1;
+    int upX = -1;
+    int upY = -1;
     while (SDL_PollEvent(&e))
     {
         switch (e.type)
@@ -145,27 +151,24 @@ void processEvents(Protocol &protocol)
         case SDL_MOUSEBUTTONDOWN:
         {
             mouseDown = true;
-            int window_width, window_height;
-            SDL_GetWindowSize(window, &window_width, &window_height);
-            protocol.sendClick(1.0 * e.button.x / window_width, 1.0 * e.button.y / window_height, true);
+            downX = e.button.x;
+            downY = e.button.y;
             break;
         }
 
         case SDL_MOUSEBUTTONUP:
         {
             mouseDown = false;
-            int window_width, window_height;
-            SDL_GetWindowSize(window, &window_width, &window_height);
-            protocol.sendClick(1.0 * e.button.x / window_width, 1.0 * e.button.y / window_height, false);
+            upX = e.button.x;
+            upY = e.button.y;
             break;
         }
         case SDL_MOUSEMOTION:
         {
             if (!mouseDown)
                 break;
-            int window_width, window_height;
-            SDL_GetWindowSize(window, &window_width, &window_height);
-            protocol.sendMove(1.0 * e.motion.x / window_width, 1.0 * e.motion.y / window_height);
+            motionX = e.motion.x;
+            motionY = e.motion.y;
             break;
         }
         case SDL_KEYDOWN:
@@ -174,6 +177,18 @@ void processEvents(Protocol &protocol)
             break;
         }
         }
+    }
+
+    if(processMouse && (downX>=0 || upX>=0 || motionX>=0))
+    {
+        int window_width, window_height;
+        SDL_GetWindowSize(window, &window_width, &window_height);
+        if(downX>=0)
+            protocol.sendClick(1.0 * downX / window_width, 1.0 * downY / window_height, true);
+        if(motionX>=0)
+            protocol.sendMove(1.0 * motionX / window_width, 1.0 * motionY / window_height);
+        if(upX>=0)
+            protocol.sendClick(1.0 * upX / window_width, 1.0 * upY / window_height, false);         
     }
 }
 
@@ -224,7 +239,7 @@ void application()
     while (active)
     {
         Uint32 frameStart = SDL_GetTicks();
-        processEvents(protocol);
+        processEvents(protocol, videoPrepared);
 
         if (connected != protocol.phoneConnected)
         {
@@ -251,6 +266,8 @@ void application()
                     SDL_RenderCopy(renderer, videoRenderer.texture, nullptr, nullptr);
                     SDL_RenderPresent(renderer);
                 }
+                if(frameid!=latestid+1)
+                    std::cout << "[Main] Fram drop from " << frameid - latestid - 1 << std::endl;
                 latestid = frameid;
                 videoBuffer.consume();
             }
@@ -327,7 +344,7 @@ int main(int argc, char **argv)
     }
 
     // Create SDL window centered on screen
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best"); 
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
     window = SDL_CreateWindow(title,
                               SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,

@@ -14,6 +14,12 @@
 #define READ_TIMEOUT 5000
 #define ENCRYPTION_BASE "SkBRDy3gmrw1ieH0"
 
+#define PROTOCOL_DEBUG_NONE 0
+#define PROTOCOL_DEBUG_UNKNOWN 1
+#define PROTOCOL_DEBUG_NOSTREAM 2
+#define PROTOCOL_DEBUG_OUT 3
+#define PROTOCOL_DEBUG_ALL 4
+
 #pragma pack(push, 1)
 struct Header
 {
@@ -48,6 +54,11 @@ private:
     void release();
 
     void status(const char *status);
+
+    static void printInts(uint32_t length, uint8_t *data, uint16_t max);
+    static void printBytes(uint32_t length, uint8_t *data, uint16_t max);
+    static const char *cmdString(int cmd);
+    static void printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool encrypted, bool out);
 
     libusb_context *_context = nullptr;
     libusb_device_handle *_device = nullptr;

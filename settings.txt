@@ -71,3 +71,11 @@
 #
 #on-connect-script = 
 #on-disconnect-script = 
+
+# Protocol debug level. Works on debug builds only with PROTOCOL_DEBUG flag set.
+# 0 - nothing
+# 1 - unknown commands
+# 2 - all commands except data streams
+# 3 - include outgoing commands
+# 4 - log everything
+#protocol-debug = 0 

@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <iostream>
+#include <iomanip>
 #include <condition_variable>
 
 #include "helper/protocol_const.h"
@@ -183,6 +184,10 @@ int Connector::send(int cmd, bool encrypt, uint8_t *data, uint32_t size)
     if (data && size > 0)
         libusb_bulk_transfer(_device, _endpoint_out, data, size, &transferred, 0);
 
+#ifdef PROTOCOL_DEBUG
+    printMessage(cmd, size, data, magic == MAGIC_ENC, true);
+#endif
+
     return transferred;
 }
 
@@ -203,13 +208,94 @@ void Connector::setEncryption(bool enabled)
     _ecnrypt = true;
 }
 
+void Connector::printInts(uint32_t length, uint8_t *data, uint16_t max)
+{
+    if (data && length >= 4)
+    {
+        std::cout << "  > ";
+        size_t count = length / 4;
+        for (size_t i = 0; (i < count) & (i < max); ++i)
+        {
+            uint32_t val =
+                ((uint32_t)data[i * 4 + 0]) |
+                ((uint32_t)data[i * 4 + 1] << 8) |
+                ((uint32_t)data[i * 4 + 2] << 16) |
+                ((uint32_t)data[i * 4 + 3] << 24);
+            std::cout << val;
+        }
+        std::cout << std::endl;
+    }
+}
+
+void Connector::printBytes(uint32_t length, uint8_t *data, uint16_t max)
+{
+    if (data && length >= 4)
+    {
+        std::cout << "  > ";
+        for (size_t i = 0; (i < length) & (i < max); ++i)
+        {
+            std::cout << data[i];
+        }
+        std::cout << std::endl;
+    }
+}
+
+const char *Connector::cmdString(int cmd)
+{
+    for (const ProtocolCmdEntry &entry : protocolCmdList)
+    {
+        if (entry.cmd == cmd)
+            return entry.name;
+    }
+    return nullptr;
+}
+
+void Connector::printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool encrypted, bool out)
+{
+    if (Settings::protocolDebug <= PROTOCOL_DEBUG_NONE)
+        return;
+
+    const char *cmds = cmdString(cmd);
+
+    if (Settings::protocolDebug <= PROTOCOL_DEBUG_UNKNOWN && cmds)
+        return;
+
+    if (Settings::protocolDebug < PROTOCOL_DEBUG_OUT && out)
+        return;
+
+    bool stream = (cmd == CMD_AUDIO_DATA || cmd == CMD_VIDEO_DATA) && length > 50;
+    if (Settings::protocolDebug < PROTOCOL_DEBUG_ALL && stream)
+        return;
+
+    std::ostringstream oss;
+
+    oss << (out ? "<" : ">") << (encrypted ? "*" : " ")
+        << std::setw(3) << std::right << static_cast<unsigned>(cmd)
+        << std::setw(8) << std::left << ("[" + std::to_string(length) + "]")
+        << std::setw(15) << std::left << (cmds ? cmds : "Unknown");
+
+    if (data && length > 0)
+    {
+        for (size_t i = 0; i < 50 && i < length; ++i)
+        {
+            char ch = static_cast<char>(data[i]);
+            if (ch == '\n' || ch == '\r')
+                oss << '.';
+            else
+                oss << (std::isprint(static_cast<unsigned char>(ch)) ? ch : '.');
+        }
+    }
+
+    std::cout << oss.str() << std::endl;
+}
+
 void Connector::read_loop()
 {
     std::mutex mtx;
     std::condition_variable cv;
     Header header;
     int transferred = 0;
-    uint8_t *data;
+    uint8_t *data = nullptr;
 
     // Set thread name
     setThreadName("protocol-reader");
@@ -251,6 +337,10 @@ void Connector::read_loop()
             libusb_bulk_transfer(_device, _endpoint_in, data, header.length, &transferred, READ_TIMEOUT);
         }
 
+#ifdef PROTOCOL_DEBUG
+        printMessage(header.type, header.length, data, header.magic == MAGIC_ENC, false);
+#endif
+
         if (!_protocol)
         {
             free(data);
@@ -262,14 +352,14 @@ void Connector::read_loop()
 
             if (!_cipher)
             {
-                std::cout << "[Connection] Received encrypted command " << header.type <<" but cipher is not initialised" << std::endl;
+                std::cout << "[Connection] Received encrypted command " << header.type << " but cipher is not initialised" << std::endl;
                 continue;
             }
             if (!_cipher->Decrypt(data, header.length))
             {
                 std::cout << "[Connection] Can't decrypt command " << header.type << std::endl;
                 continue;
-            }            
+            }
         }
 
         if (padding > 0)
@@ -292,6 +382,7 @@ void Connector::write_loop()
         if (_connected)
         {
             status("Initialising dongle");
+            std::cout << "[Connection] Device connected" << std::endl;
             if (_protocol)
                 _protocol->onDevice(true);
 
