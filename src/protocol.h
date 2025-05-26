@@ -32,9 +32,8 @@ public:
 
     Connector connector;
     AtomicQueue<Message> videoData;
-    AtomicQueue<Message> audioStream0;
-    AtomicQueue<Message> audioStream1;
-    AtomicQueue<Message> audioStream2;
+    AtomicQueue<Message> audioStreamMain;
+    AtomicQueue<Message> audioStreamAux;
     bool phoneConnected;
 
 private:

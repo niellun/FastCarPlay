@@ -11,7 +11,8 @@
 #include "struct/message.h"
 #include "helper/error.h"
 
-#define NO_DATA_FRAMES 20
+#define FADE_IN_SPEED 0.00001
+#define FADE_OUT_SPEED 0.0001
 
 struct ChannelConfig
 {
@@ -32,35 +33,39 @@ struct ChannelConfig
 class PcmAudio
 {
 public:
-    PcmAudio();
+    PcmAudio(const char *name = "");
     ~PcmAudio();
 
     // Start playing raw PCM data from queue
-    void start(AtomicQueue<Message> *data);
+    void start(AtomicQueue<Message> *data, PcmAudio *fader = nullptr);
     void stop();
 
-    void setVolume(float vol);
+    void Fade(bool enble);
 
 private:
     void runner();
     void loop(SDL_AudioDeviceID device);
+    void fadecpy(uint8_t *target, uint8_t *source, size_t len);
 
     static void callback(void *userdata, Uint8 *stream, int len);
     static ChannelConfig _configTable[];
     static ChannelConfig getConfig(int type);
 
-    float _volume = 1.0f;
-
     AtomicQueue<Message> *_data;
     ChannelConfig _config;
     int _offset;
-    int _nodata;
+    PcmAudio *_fader;
+    bool _fade;
+    bool _faded;
+    float _volume;
+    float _fadeVolume;
 
     std::thread _thread;
     std::mutex _mtx;
     std::condition_variable _cv;
     std::atomic<bool> _reconfig{false};
     std::atomic<bool> _active{false};
+    std::string _name;
 };
 
 #endif /* SRC_PCM_AUDIO */

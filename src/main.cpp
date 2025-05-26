@@ -179,16 +179,16 @@ void processEvents(Protocol &protocol, bool processMouse)
         }
     }
 
-    if(processMouse && (downX>=0 || upX>=0 || motionX>=0))
+    if (processMouse && (downX >= 0 || upX >= 0 || motionX >= 0))
     {
         int window_width, window_height;
         SDL_GetWindowSize(window, &window_width, &window_height);
-        if(downX>=0)
+        if (downX >= 0)
             protocol.sendClick(1.0 * downX / window_width, 1.0 * downY / window_height, true);
-        if(motionX>=0)
+        if (motionX >= 0)
             protocol.sendMove(1.0 * motionX / window_width, 1.0 * motionY / window_height);
-        if(upX>=0)
-            protocol.sendClick(1.0 * upX / window_width, 1.0 * upY / window_height, false);         
+        if (upX >= 0)
+            protocol.sendClick(1.0 * upX / window_width, 1.0 * upY / window_height, false);
     }
 }
 
@@ -208,11 +208,10 @@ void application()
     VideoBuffer videoBuffer;
     Protocol protocol(Settings::sourceWidth, Settings::sourceHeight, Settings::sourceFps, AV_INPUT_BUFFER_PADDING_SIZE);
     Decoder decoder;
-    PcmAudio audio0, audio1, audio2;
+    PcmAudio audioMain("Main"), audioAux("Aux");
     decoder.start(&protocol.videoData, &videoBuffer, AV_CODEC_ID_H264);
-    audio0.start(&protocol.audioStream0);
-    audio1.start(&protocol.audioStream1);
-    audio2.start(&protocol.audioStream2);
+    audioMain.start(&protocol.audioStreamMain);
+    audioAux.start(&protocol.audioStreamAux, &audioMain);
     protocol.start(onStatus);
 
     UFont textFont(font, font_len, Settings::fontSize);
@@ -236,9 +235,9 @@ void application()
     uint32_t frameDelay = inactiveDelay;
     active = true;
     uint32_t latestid = 0;
+    Uint32 frameStart = SDL_GetTicks();
     while (active)
     {
-        Uint32 frameStart = SDL_GetTicks();
         processEvents(protocol, videoPrepared);
 
         if (connected != protocol.phoneConnected)
@@ -266,8 +265,8 @@ void application()
                     SDL_RenderCopy(renderer, videoRenderer.texture, nullptr, nullptr);
                     SDL_RenderPresent(renderer);
                 }
-                if(frameid!=latestid+1)
-                    std::cout << "[Main] Fram drop from " << frameid - latestid - 1 << std::endl;
+                if (frameid != latestid + 1)
+                    std::cout << "[Main] Frame drop " << frameid - latestid - 1 << " on " << frameid << std::endl;
                 latestid = frameid;
                 videoBuffer.consume();
             }
@@ -291,11 +290,15 @@ void application()
             }
         }
 
-        Uint32 frameTime = SDL_GetTicks() - frameStart;
+        Uint32 frameEnd = SDL_GetTicks();
+        Uint32 frameTime = frameEnd - frameStart;
         if (frameTime < frameDelay)
         {
             SDL_Delay(frameDelay - frameTime); // Sleep only the remaining time
+            frameStart = frameStart + frameDelay;
         }
+        else
+            frameStart = frameEnd;
     }
     std::cout << "[Main] Stopping" << std::endl;
     SDL_HideWindow(window);
@@ -344,7 +347,10 @@ int main(int argc, char **argv)
     }
 
     // Create SDL window centered on screen
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
+    if (Settings::fastScale)
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+    else
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
     window = SDL_CreateWindow(title,
                               SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,
@@ -361,7 +367,7 @@ int main(int argc, char **argv)
     }
 
     // Create accelerated renderer for the window
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    renderer = SDL_CreateRenderer(window, -1, (Settings::vsync ? (SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : SDL_RENDERER_ACCELERATED));
     if (renderer)
     {
         std::cout << "[Main] Started" << std::endl;

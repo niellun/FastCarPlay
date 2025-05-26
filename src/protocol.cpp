@@ -9,9 +9,8 @@
 Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t padding)
     : connector(padding),
       videoData(Settings::videoQueue),
-      audioStream0(Settings::audioQueue),
-      audioStream1(Settings::audioQueue),
-      audioStream2(Settings::audioQueue),
+      audioStreamMain(Settings::audioQueue),
+      audioStreamAux(Settings::audioQueue),
       phoneConnected(false),
       _width(width),
       _height(height),
@@ -51,8 +50,6 @@ void Protocol::sendInit(int width, int height, int fps)
 
 void Protocol::sendKey(int key)
 {
-    printf("Send key %d", key);
-
     uint8_t buf[4];
     write_uint32_le(&buf[0], key);
 
@@ -211,27 +208,21 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     }
     case CMD_AUDIO_DATA:
     {
-        if (length <= 13)
+        if (length <= 16)
         {
             break;
         }
         int channel = 0;
         memcpy(&channel, data + 8, sizeof(int));
-        if (channel == 0)
-        {
-            audioStream0.pushDiscard(std::make_unique<Message>(data, length, 12));
-            dispose = false;
-            break;
-        }
         if (channel == 1)
         {
-            audioStream1.pushDiscard(std::make_unique<Message>(data, length, 12));
+            audioStreamMain.pushDiscard(std::make_unique<Message>(data, length, 12));
             dispose = false;
             break;
         }
         if (channel == 2)
         {
-            audioStream2.pushDiscard(std::make_unique<Message>(data, length, 12));
+            audioStreamAux.pushDiscard(std::make_unique<Message>(data, length, 12));
             dispose = false;
             break;
         }

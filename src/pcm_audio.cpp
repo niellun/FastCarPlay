@@ -11,11 +11,52 @@ ChannelConfig PcmAudio::_configTable[] = {
 };
 
 // Implementation
-PcmAudio::PcmAudio() {}
+PcmAudio::PcmAudio(const char *name)
+{
+    if (!name || strlen(name) < 1)
+    {
+        _name = "[Audio]";
+        return;
+    }
+    _name = "[Audio ";
+    _name = _name + name + "]";
+    _fade = false;
+    _faded = false;
+    _volume = 1.0;
+    _fadeVolume = Settings::audioFade;
+    if (_fadeVolume < 0)
+        _fadeVolume = 0;
+    if (_fadeVolume > 1)
+        _fadeVolume = 1;
+}
 
 PcmAudio::~PcmAudio()
 {
     stop();
+    if (_thread.joinable())
+        _thread.join();
+}
+
+void PcmAudio::fadecpy(uint8_t *target, uint8_t *source, size_t len)
+{
+    int16_t *src = reinterpret_cast<int16_t *>(source);
+    int16_t *dst = reinterpret_cast<int16_t *>(target);
+    _faded = true;
+    for (size_t i = 0; i < len / 2; i++)
+    {
+        if (_fade)
+        {
+            if (_volume - FADE_OUT_SPEED >= _fadeVolume)
+                _volume = _volume - FADE_OUT_SPEED;
+        }
+        else
+        {
+            if (_volume + FADE_IN_SPEED <= 1)
+                _volume = _volume + FADE_IN_SPEED;
+        }
+        dst[i] = src[i] * _volume;
+    }
+    _faded = _volume + FADE_IN_SPEED <= 1;
 }
 
 void PcmAudio::callback(void *userdata, Uint8 *stream, int len)
@@ -32,26 +73,31 @@ void PcmAudio::callback(void *userdata, Uint8 *stream, int len)
         if (segment == nullptr || self->_reconfig)
         {
             std::fill_n(stream, len, 0);
-            if (self->_nodata++ > NO_DATA_FRAMES)
-            {
-                self->_reconfig = true;
-                self->_cv.notify_one();
-            }
+            self->_faded = self->_fade;
+            self->_volume = self->_faded ? Settings::audioFade : 1;
+            self->_reconfig = true;
+            self->_cv.notify_one();
             return;
         }
 
-        self->_nodata = 0;
         int remain = segment->length() - self->_offset;
         uint8_t *data = segment->data() + self->_offset;
 
         if (remain > len)
         {
-            std::memcpy(stream, data, len);
+            if (self->_fade || self->_faded)
+                self->fadecpy(stream, data, len);
+            else
+                std::memcpy(stream, data, len);
             self->_offset = self->_offset + len;
             return;
         }
 
-        std::memcpy(stream, data, remain);
+        if (self->_fade || self->_faded)
+            self->fadecpy(stream, data, remain);
+        else
+            std::memcpy(stream, data, remain);
+
         len = len - remain;
         stream = stream + remain;
         self->_data->pop();
@@ -72,25 +118,16 @@ ChannelConfig PcmAudio::getConfig(int type)
     return {44100, 2};
 }
 
-void PcmAudio::setVolume(float vol)
+void PcmAudio::Fade(bool enable)
 {
-    if (vol < 0)
-    {
-        _volume = 0;
-        return;
-    }
-    if (vol > 1)
-    {
-        _volume = 1;
-        return;
-    }
-    _volume = vol;
+    _fade = enable;
 }
 
-void PcmAudio::start(AtomicQueue<Message> *data)
+void PcmAudio::start(AtomicQueue<Message> *data, PcmAudio *fader)
 {
     if (_active)
         stop();
+    _fader = fader;
     _data = data;
     _active = true;
     _thread = std::thread(&PcmAudio::runner, this);
@@ -114,13 +151,11 @@ void PcmAudio::runner()
 
     while (_active)
     {
-        printf("AUDIO - WAIT BUFFER\n");
         _data->wait(_active, Settings::audioDelay);
         const Message *segment = _data->peek();
         if (!segment)
             continue;
 
-        printf("AUDIO - START\n");
         _config = getConfig(segment->getInt(OFFSET_AUDIO_FORMAT));
         if (device != 0)
         {
@@ -140,21 +175,27 @@ void PcmAudio::runner()
 
         _reconfig = false;
         _offset = 0;
-        _nodata = 0;
 
         device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
         if (device == 0)
         {
-            std::cerr << "[Audio] Failed to open audio: " << SDL_GetError() << std::endl;
+            std::cerr << _name << " Failed to open audio: " << SDL_GetError() << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
         SDL_PauseAudioDevice(device, 0);
+        std::cout << _name << " Start playing " << _config.rate << "kHz " << (_config.channels == 2 ? "stereo" : "mono") << std::endl;
+        if (_fader)
+            _fader->Fade(true);
 
-        printf("AUDIO - SLEED %b\n", _reconfig.load() || !_active.load());
         std::unique_lock<std::mutex> lock(_mtx);
         _cv.wait(lock, [&]
                  { return _reconfig.load() || !_active.load(); });
+
+        SDL_PauseAudioDevice(device, 1);
+        std::cout << _name << " Stop playing" << std::endl;
+        if (_fader)
+            _fader->Fade(false);
     }
 
     if (device)

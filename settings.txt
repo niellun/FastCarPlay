@@ -10,7 +10,10 @@
 # Application drawing settings widthxheight
 #width = 720
 #height = 576
-#fps = 60  
+#fps = 50 
+
+# Enable vsync. This reduce tearing but can dramatically affect performance on low end systems 
+#vsync = false
 
 # Target DPI reported to device. Set 0 for default
 #dpi = 0
@@ -18,11 +21,13 @@
 # Requested image from phone 
 #source-width = 720
 #source-height = 576
-#source-fps = 30    
+#source-fps = 50    
 
 # Scaler algorithm if application drawing is differen from source image
 # It's recommended to keep application and source values same cause scaling
 # takes a lot of CPU and can cause artifacts on slow devices
+# The image will still be scaled to window size using ginternal GL scaling.
+# See fast-render-scale for that
 # options 
 #    SWS_FAST_BILINEAR  1
 #    SWS_BILINEAR       2
@@ -37,6 +42,9 @@
 #    SWS_SPLINE         1024
 #scaler = 2
 
+# Select faster method of scaling image to window size (nearest) or better quality (linear)
+#fast-render-scale = false
+
 # Enable logging
 #logging = false 
 
@@ -47,6 +55,11 @@
 # Audio delay. Fill the buffer to this value before start playing. Increase if you hear audio artifacts.
 # Should be less than audio-buffer-size 
 #audio-buffer-wait = 2
+
+# Reduce volume of main audio source when there is higher priority audio stream.
+# This will reduce volume of the music if there is navigation instructions
+# Reduction level from 1 (no reduction) to 0 (fully silenced)
+#audio-fade = 0.3
 
 # Font size for messgaes on screen. Set to 0 is you do not want any
 #font-size = 30

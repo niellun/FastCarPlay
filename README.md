@@ -1,32 +1,23 @@
 # FastCarPlay
 This is C++ implementation of carplay receiver for "Autobox" dongles. 
-The purpose of the project was to make application lightweight to run on Raspberry PI Zero 2W and use hardware decoding.
+The purpose of the project is to make application lightweight to run on Raspberry PI Zero 2W using hardware decoding.
 
-# Dongles
+## Dongles
 The dongles are readily available from Amazon or Aliexpress labeled by Carlinkit. They also seems to have official web site https://www.carlinkit.com/.
 Devices might have different vendor and product id's. Check your with lsusb and update settings if necessary.
 
-# Setup
-## Dependencies
+## Setup
+### Dependencies
 The project is based on SDL2, FFMPEG, LIBUSB. It use XXD for resource embedding.
 ```
 sudo apt install build-essential xxd libsdl2-dev libsdl2-ttf-dev libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libusb-1.0-0-dev libssl-dev
 ```
 To run the application you also need to install runtime
 ```
-sudo apt install ffmpeg libsdl2-2.0-0 libsdl2-ttf-2.0-0 libavformat59 libavcodec61 libavutil57 libswscale7 libusb-1.0-0 libssl3
+sudo apt install ffmpeg libsdl2-2.0-0 libsdl2-ttf-2.0-0 libusb-1.0-0 libssl3
 ```
 
-## Build and run
-The application can be started with settings file. Sample of the settings file can be found in settings.txt
-The project is using make. From the repository root run following
-```
-make clean
-make release
-./out/app ./settings.txt
-```
-
-## USB Permissions and device id
+### USB Permissions and device id
 On linux app may not have permisiions to read USB device. You need to create udev rule to grant persmissions for dongle.
 First you need to figure out your idVendor and idProduct. 
 ```
@@ -41,13 +32,23 @@ Create udev rules, replace <__Vendor__> <__Product__> and <__Your user__> with y
 ```
 echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="<Vendor>", ATTRS{idProduct}=="<Product>", GROUP="<Your user>", MODE="0660"' | sudo tee /etc/udev/rules.d/50-carlinkit.rules
 ## example
-## UBSYSTEM=="usb", ATTRS{idVendor}=="1314", ATTRS{idProduct}=="1520", GROUP="linux", MODE="0660"
+## SUBSYSTEM=="usb", ATTRS{idVendor}=="1314", ATTRS{idProduct}=="1520", GROUP="linux", MODE="0660"
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
+### Build and run
+The application can be started with settings file. Sample of the settings file can be found in settings.txt. Make sure that you put proper device id in settings and app have access to usb (see previous step)
+The project is using make. You can edit ./conf/settings.txt after copy if needed. From the repository root run following
+```
+make clean
+make release
+mkdir ./conf
+cp ./settings.txt /conf
+./out/app ./conf/settings.txt
+```
 
-## Customisation
+### Customisation
 You can change font and background images by replacing files in ./src/resource
 - background.bmp for background image. Use BMP format only.
 - font.ttf for font. Use TTF fdrmat only
@@ -58,7 +59,7 @@ make clean
 make release
 ```
 
-## Keys
+### Keys
 The following keys have been mapped:
 - Left - navigate left
 - Right - navigate right
@@ -66,7 +67,7 @@ The following keys have been mapped:
 - Backspace - Go back
 - f - toggle fullscreen mode
 
-# Status
+## Status
 What is working:
 - Video
 - Audio (multiple channels)
@@ -78,7 +79,7 @@ What is not working:
 - Microphone - that's next step for me to figure out how to feed sound
 - Telephone - the listening part will work, but because there is no mic implementation you can't speak
 
-## Notes
+### Notes
 Regardless the resolution there are 2 types of settings
 - source-width source-height source-fps - defines what video parameters will be requested from device
 - width height fps - defines video drawing resolution and fps
@@ -89,13 +90,22 @@ You can set the 'scaler' in setting to define scaling algorithm. On my Raspbery 
 
 Increasing FPS above Source-FPS will cause app to run UI loop with less delays and do more event polling. This can increase responsivenes of the system, but also will make X11 to use more resources.
 
-## Next plans
-- Implement direct buffer transfer from video decoder to renderer (should reduce amount of memory copies and CPU load)
-- Control audio buffers better (now system use 3 decoding threads but in reality only 2 required)
-- Reduce music volume when there is navigation messages
-- Add abilities to run script on device connect and device disconnect
+### Progress and plans
+Done
+- ✓ Implement direct buffer transfer from video decoder to renderer (should reduce amount of memory copies and CPU load)
+- ✓ Control audio buffers better (now system use 3 decoding threads but in reality only 2 required)
+- ✓ Reduce music volume when there is navigation messages
+- ✓ Add abilities to run script on device connect and device disconnect
+- ✓ Add encrypted USB communication option with magic code 0x55bb55bb for new firmware
+- ✓ Improve touch responsiveness
+- ✓ Protocol debugging option
 
-# Acknowledgement
+Next 
+- Add microphone support (Calls, Siri)
+- Support Android Auto (message me if you have idea how it suppose to work with this dongle)
+
+
+## Acknowledgement
 The project is inspired and based on great work done by other developers:
 - ![pycarplay by electric-monk](https://github.com/electric-monk/pycarplay)
 - ![carplay-receiver by harrylepotter](https://github.com/harrylepotter/carplay-receiver)
@@ -103,7 +113,7 @@ The project is inspired and based on great work done by other developers:
 - ![carplay-client by rayphee](https://github.com/rayphee/carplay-client)
 
 The project is licenced under GPL-3 licence. See LICENCE for details.
-The project is using ![Open Sans](https://fonts.google.com/specimen/Open+Sans) font. See FONT_LICENCE for details.
+The project is using Open Sans font (https://fonts.google.com/specimen/Open+Sans). See FONT_LICENCE for details.
 
-# Finally
+## Finally
 If you have any questions, suggestions or you find problems running this feel free to open issue.

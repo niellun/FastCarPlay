@@ -30,6 +30,12 @@ Connector::~Connector()
 {
     stop();
 
+    if (_cipher)
+    {
+        delete _cipher;
+        _cipher = nullptr;
+    }
+
     if (_device)
     {
         libusb_release_interface(_device, 0);
@@ -53,7 +59,6 @@ void Connector::start(IProtocol *protocol)
 
     _active = true;
     _write_thread = std::thread(&Connector::write_loop, this);
-    _read_thread = std::thread(&Connector::read_loop, this);
 }
 
 void Connector::stop()
@@ -234,7 +239,7 @@ void Connector::printBytes(uint32_t length, uint8_t *data, uint16_t max)
         std::cout << "  > ";
         for (size_t i = 0; (i < length) & (i < max); ++i)
         {
-            std::cout << data[i];
+            std::cout << std::setw(4) << (uint32_t)(data[i]);
         }
         std::cout << std::endl;
     }
@@ -299,16 +304,8 @@ void Connector::read_loop()
 
     // Set thread name
     setThreadName("protocol-reader");
-    while (_active)
+    while (_active && _connected)
     {
-        if (!_connected)
-        {
-            std::unique_lock<std::mutex> lock(mtx);
-            cv.wait_for(lock, std::chrono::seconds(1), [&]()
-                        { return !_active.load(); });
-            continue;
-        }
-
         int result = libusb_bulk_transfer(_device, _endpoint_in, reinterpret_cast<uint8_t *>(&header), sizeof(Header), &transferred, READ_TIMEOUT);
 
         if (result == LIBUSB_ERROR_NO_DEVICE)
@@ -322,6 +319,7 @@ void Connector::read_loop()
 
         if (result != LIBUSB_SUCCESS || transferred != sizeof(Header))
         {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
 
@@ -337,10 +335,6 @@ void Connector::read_loop()
             libusb_bulk_transfer(_device, _endpoint_in, data, header.length, &transferred, READ_TIMEOUT);
         }
 
-#ifdef PROTOCOL_DEBUG
-        printMessage(header.type, header.length, data, header.magic == MAGIC_ENC, false);
-#endif
-
         if (!_protocol)
         {
             free(data);
@@ -349,7 +343,6 @@ void Connector::read_loop()
 
         if (header.magic == MAGIC_ENC)
         {
-
             if (!_cipher)
             {
                 std::cout << "[Connection] Received encrypted command " << header.type << " but cipher is not initialised" << std::endl;
@@ -361,6 +354,13 @@ void Connector::read_loop()
                 continue;
             }
         }
+
+#ifdef PROTOCOL_DEBUG
+        printMessage(header.type, header.length, data, header.magic == MAGIC_ENC, false);
+
+        if (header.type == 7 && header.length < 100)
+            printBytes(header.length, data, 30);
+#endif
 
         if (padding > 0)
             std::fill(data + header.length, data + header.length + padding, 0);
@@ -383,6 +383,8 @@ void Connector::write_loop()
         {
             status("Initialising dongle");
             std::cout << "[Connection] Device connected" << std::endl;
+
+            _read_thread = std::thread(&Connector::read_loop, this);
             if (_protocol)
                 _protocol->onDevice(true);
 
