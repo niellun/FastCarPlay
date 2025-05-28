@@ -396,6 +396,9 @@ void Connector::write_loop()
                 cv.wait_for(lock, std::chrono::seconds(2), [&]()
                             { return !_active.load(); });
             }
+
+            if(_read_thread.joinable())
+                _read_thread.join();
         }
         std::unique_lock<std::mutex> lock(mtx);
         cv.wait_for(lock, std::chrono::seconds(1), [&]()
