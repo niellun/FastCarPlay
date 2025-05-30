@@ -12,100 +12,44 @@ extern "C"
 #include <libavutil/imgutils.h>   // FFmpeg utility functions for image handling
 }
 
-#include "resource/background.h"
-#include "resource/font.h"
-
 #include "helper/functions.h"
-#include "helper/ufont.h"
-#include "helper/uimage.h"
-
+#include "helper/protocol_const.h"
 #include "struct/video_buffer.h"
 
 #include "protocol.h"
 #include "decoder.h"
 #include "pcm_audio.h"
-#include "renderer.h"
+#include "interface.h"
 
-static const char *title = "Fast Car Play v0.2";
+#define FRAME_DELAY_INACTIVE 200
+
+static const char *title = "Fast Car Play v0.3";
 static SDL_Window *window = nullptr;
 static SDL_Renderer *renderer = nullptr;
-bool active = false;
+Uint32 evtStatus = (Uint32)-1;
+Uint32 evtConnected = (Uint32)-1;
+bool active = true;
 
-static SDL_Texture *textTexture = nullptr;
-static std::string textureText = "";
-static SDL_Texture *imgTexture = nullptr;
-
-static bool mouseDown = false;
-static bool fullscreen = false;
-
-std::mutex statusMutex;
-std::string statusText;
-
-void onStatus(const char *status)
+struct RunParams
 {
-    std::lock_guard<std::mutex> lock(statusMutex);
-    statusText = status;
-}
+    bool connected;
+    bool videoRendered;
+    bool dirty;
+    bool fullscreen;
+    bool mouseDown;
+    uint8_t deviceStatus;
+    uint32_t frameDelay;
+    int activeDelay;
+};
 
-void DrawText(UFont &font, std::string text)
-{
-    if (!textTexture || textureText.compare(text) != 0)
-    {
-        if (textTexture)
-            SDL_DestroyTexture(textTexture);
-        textTexture = font.GetText(renderer, text.c_str(), {255, 255, 255, 255});
-        textureText = text;
-    }
-
-    if (!textTexture)
-        return;
-
-    int textW, textH;
-    SDL_QueryTexture(textTexture, nullptr, nullptr, &textW, &textH);
-
-    int windowW, windowH;
-    SDL_GetRendererOutputSize(renderer, &windowW, &windowH);
-
-    // Center text
-    SDL_Rect dstRect = {
-        (windowW - textW) / 2,
-        (windowH - textH) * 9 / 10,
-        textW,
-        textH};
-
-    SDL_RenderCopy(renderer, textTexture, nullptr, &dstRect);
-}
-
-void DrawImage(UImage &img)
-{
-    if (!imgTexture)
-        imgTexture = img.GetImage(renderer);
-
-    if (!imgTexture)
-        return;
-
-    int windowW, windowH;
-    SDL_GetRendererOutputSize(renderer, &windowW, &windowH);
-
-    // Compute destination rectangle to center image
-    SDL_Rect dst = {
-        (windowW - img.Width) / 2,  // x: center horizontally
-        (windowH - img.Height) / 2, // y: center vertically
-        img.Width,                  // width: original image width
-        img.Height                  // height: original image height
-    };
-
-    SDL_RenderCopy(renderer, imgTexture, nullptr, &dst);
-}
-
-void processKey(Protocol &protocol, SDL_Keysym key)
+void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
 {
     switch (key.sym)
     {
     case SDLK_f:
-        fullscreen = !fullscreen; // Toggle fullscreen mode
-        SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-        SDL_SetWindowBordered(window, fullscreen ? SDL_FALSE : SDL_TRUE);
+        params.fullscreen = !params.fullscreen; // Toggle fullscreen mode
+        SDL_SetWindowFullscreen(window, params.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        SDL_SetWindowBordered(window, params.fullscreen ? SDL_FALSE : SDL_TRUE);
         break;
 
     case SDLK_q:
@@ -131,7 +75,7 @@ void processKey(Protocol &protocol, SDL_Keysym key)
     }
 }
 
-void processEvents(Protocol &protocol, bool processMouse)
+void processEvents(Protocol &protocol, RunParams &params, VideoBuffer &vb)
 {
     SDL_Event e;
     int motionX = -1;
@@ -140,6 +84,7 @@ void processEvents(Protocol &protocol, bool processMouse)
     int downY = -1;
     int upX = -1;
     int upY = -1;
+
     while (SDL_PollEvent(&e))
     {
         switch (e.type)
@@ -148,9 +93,16 @@ void processEvents(Protocol &protocol, bool processMouse)
             active = false;
             break;
 
+        case SDL_WINDOWEVENT:
+            if (e.window.event == SDL_WINDOWEVENT_RESIZED)
+            {
+                params.dirty = true;
+            }
+            break;
+
         case SDL_MOUSEBUTTONDOWN:
         {
-            mouseDown = true;
+            params.mouseDown = true;
             downX = e.button.x;
             downY = e.button.y;
             break;
@@ -158,14 +110,14 @@ void processEvents(Protocol &protocol, bool processMouse)
 
         case SDL_MOUSEBUTTONUP:
         {
-            mouseDown = false;
+            params.mouseDown = false;
             upX = e.button.x;
             upY = e.button.y;
             break;
         }
         case SDL_MOUSEMOTION:
         {
-            if (!mouseDown)
+            if (!params.mouseDown)
                 break;
             motionX = e.motion.x;
             motionY = e.motion.y;
@@ -173,13 +125,30 @@ void processEvents(Protocol &protocol, bool processMouse)
         }
         case SDL_KEYDOWN:
         {
-            processKey(protocol, e.key.keysym);
+            processKey(protocol, e.key.keysym, params);
             break;
+        }
+        default:
+        {
+            if (e.type == evtConnected)
+            {
+                printf("\nEvt connected %d\n", e.user.code);
+                params.connected = e.user.code != 0;
+                params.dirty = true;
+                params.videoRendered = false;
+                params.frameDelay = params.connected ? params.activeDelay : FRAME_DELAY_INACTIVE;
+                if (!params.connected)
+                    vb.reset();
+            }
+            else if (e.type == evtStatus)
+            {
+                params.deviceStatus = e.user.code;
+            }
         }
         }
     }
 
-    if (processMouse && (downX >= 0 || upX >= 0 || motionX >= 0))
+    if (params.videoRendered && (downX >= 0 || upX >= 0 || motionX >= 0))
     {
         int window_width, window_height;
         SDL_GetWindowSize(window, &window_width, &window_height);
@@ -194,8 +163,17 @@ void processEvents(Protocol &protocol, bool processMouse)
 
 void application()
 {
-    fullscreen = Settings::fullscreen;
-    if (fullscreen)
+    RunParams p;
+    p.activeDelay = 1000 / Settings::fps;
+    p.connected = false;
+    p.deviceStatus = PROTOCOL_STATUS_INITIALISING;
+    p.dirty = false;
+    p.frameDelay = FRAME_DELAY_INACTIVE;
+    p.videoRendered = false;
+    p.fullscreen = Settings::fullscreen;
+    p.mouseDown = false;
+
+    if (p.fullscreen)
     {
         SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
         SDL_SetWindowBordered(window, SDL_FALSE);
@@ -212,90 +190,46 @@ void application()
     decoder.start(&protocol.videoData, &videoBuffer, AV_CODEC_ID_H264);
     audioMain.start(&protocol.audioStreamMain);
     audioAux.start(&protocol.audioStreamAux, &audioMain);
-    protocol.start(onStatus);
-
-    UFont textFont(font, font_len, Settings::fontSize);
-    std::string status = "Initialising";
-    DrawText(textFont, status);
-    SDL_RenderPresent(renderer);
-
-    UImage image(background, background_len);
-    SDL_RenderClear(renderer);
-    DrawImage(image);
-    DrawText(textFont, status);
-    SDL_RenderPresent(renderer);
+    protocol.start(evtStatus, evtConnected);
+    Interface interface(renderer);
 
     std::cout << "[Main] Loop" << std::endl;
-    Renderer videoRenderer(renderer);
-    bool dirty = true;
-    bool connected = false;
-    bool videoPrepared = false;
-    const int activeDelay = 1000 / Settings::fps;
-    const int inactiveDelay = 1000 / 5; // 5FPS
-    uint32_t frameDelay = inactiveDelay;
-    active = true;
     uint32_t latestid = 0;
     Uint32 frameStart = SDL_GetTicks();
     while (active)
     {
-        processEvents(protocol, videoPrepared);
+        processEvents(protocol, p, videoBuffer);
 
-        if (connected != protocol.phoneConnected)
-        {
-            connected = protocol.phoneConnected;
-            SDL_RenderClear(renderer);
-            DrawImage(image);
-            SDL_RenderPresent(renderer);
-            dirty = true;
-            videoPrepared = false;
-            frameDelay = connected ? activeDelay : inactiveDelay;
-        }
-
-        if (connected)
+        if (p.connected)
         {
             AVFrame *frame = nullptr;
             uint32_t frameid = 0;
-            if (videoBuffer.latest(&frame, &frameid) && frameid != latestid && frame)
+            if (videoBuffer.latest(&frame, &frameid) && (frameid != latestid || p.dirty) && frame)
             {
-                if (!videoPrepared)
-                    videoPrepared = videoRenderer.prepare(frame, Settings::width, Settings::height, Settings::scaler);
-                if (videoPrepared && videoRenderer.render(frame))
+                if (interface.render(frame))
                 {
-                    SDL_RenderClear(renderer);
-                    SDL_RenderCopy(renderer, videoRenderer.texture, nullptr, nullptr);
-                    SDL_RenderPresent(renderer);
+                    p.videoRendered = true;
+                    if (!p.dirty && (frameid != latestid + 1))
+                        std::cout << "[Main] Frame drop " << frameid - latestid - 1 << " on " << frameid << std::endl;
+                    latestid = frameid;
+                    p.dirty = false;
                 }
-                if (frameid != latestid + 1)
-                    std::cout << "[Main] Frame drop " << frameid - latestid - 1 << " on " << frameid << std::endl;
-                latestid = frameid;
                 videoBuffer.consume();
             }
         }
-        else
+
+        if (!p.videoRendered)
         {
-            {
-                std::lock_guard<std::mutex> lock(statusMutex);
-                if (status != statusText)
-                {
-                    status = statusText;
-                    dirty = true;
-                }
-            }
-            if (dirty)
-            {
-                SDL_RenderClear(renderer);
-                DrawImage(image);
-                DrawText(textFont, status);
-                SDL_RenderPresent(renderer);
-            }
+            interface.drawHome(p.dirty, p.connected ? PROTOCOL_STATUS_CONNECTED : p.deviceStatus);
+            p.dirty = false;
         }
 
         Uint32 frameEnd = SDL_GetTicks();
         Uint32 frameTime = frameEnd - frameStart;
-        if (frameTime < frameDelay)
+        if (active && frameTime < p.frameDelay)
         {
-            SDL_Delay(frameDelay - frameTime); // Sleep only the remaining time
-            frameStart = frameStart + frameDelay;
+            SDL_Delay(p.frameDelay - frameTime); // Sleep only the remaining time
+            frameStart = frameStart + p.frameDelay;
         }
         else
             frameStart = frameEnd;
@@ -304,20 +238,8 @@ void application()
     SDL_HideWindow(window);
 }
 
-int main(int argc, char **argv)
+int start()
 {
-    std::cout << title << std::endl;
-
-    if (argc > 2)
-    {
-        std::cerr << "  Usage: " << argv[0] << " [settings_file]" << std::endl;
-        return 1;
-    }
-    if (argc == 2)
-    {
-        Settings::load(argv[1]);
-    }
-
     if (!Settings::logging)
         disable_cout();
     else
@@ -370,9 +292,19 @@ int main(int argc, char **argv)
     renderer = SDL_CreateRenderer(window, -1, (Settings::vsync ? (SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : SDL_RENDERER_ACCELERATED));
     if (renderer)
     {
-        std::cout << "[Main] Started" << std::endl;
-        application();
-        std::cout << "[Main] Finish" << std::endl;
+        evtStatus = SDL_RegisterEvents(2);
+        if (evtStatus != (Uint32)-1)
+        {
+            evtConnected = evtStatus + 1;
+            std::cout << "[Main] Started" << std::endl;
+            application();
+            std::cout << "[Main] Finish" << std::endl;
+        }
+        else
+        {
+            std::cerr << "[Main] Can't register custom events" << std::endl;
+        }
+
         SDL_DestroyRenderer(renderer);
     }
     else
@@ -380,12 +312,29 @@ int main(int argc, char **argv)
         std::cerr << "[Main] SDL can't create renderer: " << SDL_GetError() << std::endl;
     }
 
-    if (textTexture)
-        SDL_DestroyTexture(textTexture);
-    if (imgTexture)
-        SDL_DestroyTexture(imgTexture);
     SDL_DestroyWindow(window);
     TTF_Quit();
     SDL_Quit();
     return 0;
+}
+
+int main(int argc, char **argv)
+{
+    std::cout << title << std::endl;
+    if (argc > 2)
+    {
+        std::cerr << "  Usage: " << argv[0] << " [settings_file]" << std::endl;
+        return 0;
+    }
+    try
+    {
+        if (argc == 2)
+            Settings::load(argv[1]);
+        return start();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << e.what() << std::endl;
+        return 1;
+    }
 }

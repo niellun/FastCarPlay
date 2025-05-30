@@ -11,7 +11,7 @@
 #include "helper/iprotocol.h"
 #include "aes_cipher.h"
 
-#define READ_TIMEOUT 5000
+#define READ_TIMEOUT 3000
 #define ENCRYPTION_BASE "SkBRDy3gmrw1ieH0"
 
 #define PROTOCOL_DEBUG_NONE 0
@@ -45,6 +45,11 @@ public:
 
     AESCipher *Cypher() const { return _cipher; };
 
+    static void printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool encrypted, bool out);
+    static void printInts(uint8_t *data, uint32_t length, uint16_t max);
+    static void printBytes(uint8_t *data, uint32_t length, uint16_t max);
+    static const char *cmdString(int cmd);
+
 private:
     void read_loop();
     void write_loop();
@@ -53,12 +58,9 @@ private:
     bool link();
     void release();
 
-    void status(const char *status);
-
-    static void printInts(uint32_t length, uint8_t *data, uint16_t max);
-    static void printBytes(uint32_t length, uint8_t *data, uint16_t max);
-    static const char *cmdString(int cmd);
-    static void printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool encrypted, bool out);
+    void state(u_int8_t state);
+    bool nextState(u_int8_t state);
+    bool linkFail(int status, const char *msg);
 
     libusb_context *_context = nullptr;
     libusb_device_handle *_device = nullptr;
@@ -66,6 +68,11 @@ private:
     uint8_t _endpoint_out;
     bool _connected;
     std::atomic<bool> _ecnrypt = false;
+
+    uint8_t _state;
+    uint8_t _failCount;
+    uint8_t _nodeviceCount;
+    std::string _lastError;
 
     std::thread _read_thread;
     std::thread _write_thread;

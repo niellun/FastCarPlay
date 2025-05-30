@@ -19,7 +19,7 @@ public:
 
     static const char *cmdString(int cmd);
 
-    void start(StatusCallback onStatus);
+    void start(uint32_t evtStatus, uint32_t evtPhone);
     void stop();
 
     void sendKey(int key);
@@ -40,7 +40,7 @@ private:
     void sendInt(uint32_t cmd, uint32_t value, bool encryption = true);
     void sendEncryption();
 
-    void onStatus(const char *status) override;
+    void onStatus(uint8_t status) override;
     void onDevice(bool connected) override;
     void onData(uint32_t cmd, uint32_t length, uint8_t *data) override;
 
@@ -50,7 +50,8 @@ private:
     uint16_t _height;
     uint16_t _fps;
 
-    StatusCallback _statusCallback = nullptr;
+    uint32_t _evtStatusId = (uint32_t) -1;
+    uint32_t _evtPhoneId = (uint32_t) -1;
 };
 
 #endif /* SRC_PROTOCOL */

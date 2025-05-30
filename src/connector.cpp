@@ -21,6 +21,7 @@ Connector::Connector(uint16_t videoPadding)
         _cipher = nullptr;
     }
 
+    _state = PROTOCOL_STATUS_INITIALISING;
     int result = libusb_init(&_context);
     if (result < 0)
         throw std::runtime_error(std::string("Can't initialise USB: ") + libusb_error_name(result));
@@ -67,8 +68,8 @@ void Connector::stop()
         return;
 
     _active = false;
-    if (_read_thread.joinable())
-        _read_thread.join();
+
+    state(PROTOCOL_STATUS_INITIALISING);
 
     if (_write_thread.joinable())
         _write_thread.join();
@@ -76,13 +77,11 @@ void Connector::stop()
 
 bool Connector::connect(uint16_t vendor_id, uint16_t product_id)
 {
-    status("Searching for dongle");
-
     _device = libusb_open_device_with_vid_pid(_context, vendor_id, product_id);
     if (!_device)
     {
         std::cout << "[Connection] Failed to create device handle - no device" << std::endl;
-        status("Can't find dongle");
+        state(PROTOCOL_STATUS_NO_DEVICE);
         return false;
     }
 
@@ -97,50 +96,29 @@ bool Connector::connect(uint16_t vendor_id, uint16_t product_id)
 
 bool Connector::link()
 {
-    int usbres = 0;
-    status("Linking dongle");
+    state(PROTOCOL_STATUS_LINKING);
 
-    usbres = libusb_reset_device(_device);
-    if (usbres < 0)
-    {
-        std::cout << "[Connection] Can't reset device: " << libusb_error_name(usbres) << std::endl;
+    if (linkFail(libusb_reset_device(_device), " Can't reset device"))
         return false;
-    }
 
-    usbres = libusb_set_configuration(_device, 1);
-    if (usbres < 0)
-    {
-        std::cout << "[Connection] Can't set configuration: " << libusb_error_name(usbres) << std::endl;
+    if (linkFail(libusb_set_configuration(_device, 1), "Can't set configuration"))
         return false;
-    }
 
-    usbres = libusb_claim_interface(_device, 0);
-    if (usbres < 0)
-    {
-        std::cout << "[Connection] Can't claim interface: " << libusb_error_name(usbres) << std::endl;
+    if (linkFail(libusb_claim_interface(_device, 0), "Can't claim interface"))
         return false;
-    }
 
     libusb_device *dev = libusb_get_device(_device);
     struct libusb_config_descriptor *config = nullptr;
-    usbres = libusb_get_active_config_descriptor(dev, &config);
-    if (usbres < 0)
-    {
-        std::cout << "[Connection] Can't get config: " << libusb_error_name(usbres) << std::endl;
+    if (linkFail(libusb_get_active_config_descriptor(dev, &config), "Can't get config"))
         return false;
-    }
 
     for (int i = 0; i < config->interface[0].altsetting[0].bNumEndpoints; i++)
     {
         const struct libusb_endpoint_descriptor *ep = &config->interface[0].altsetting[0].endpoint[i];
         if ((ep->bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN)
-        {
             _endpoint_in = ep->bEndpointAddress;
-        }
         else
-        {
             _endpoint_out = ep->bEndpointAddress;
-        }
     }
 
     libusb_free_config_descriptor(config);
@@ -157,10 +135,57 @@ void Connector::release()
     }
 }
 
-void Connector::status(const char *status)
+bool Connector::nextState(u_int8_t state)
 {
-    if (_protocol)
-        _protocol->onStatus(status);
+    if (state == _state)
+        return false;
+
+    if (state > _state)
+    {
+        _nodeviceCount = 0;
+        _failCount = 0;
+        _state = state;
+        return true;
+    }
+
+    switch (state)
+    {
+    case PROTOCOL_STATUS_INITIALISING:
+        break;
+
+    case PROTOCOL_STATUS_ERROR:
+        _nodeviceCount = 0;
+        if (_failCount++ < 10)
+            return false;
+        break;
+
+    case PROTOCOL_STATUS_NO_DEVICE:
+        if (_nodeviceCount++ < 10 && _state < PROTOCOL_STATUS_ONLINE)
+            return false;
+        break;
+
+    default:
+        return false;
+    }
+
+    _state = state;
+    return true;
+}
+
+void Connector::state(u_int8_t state)
+{
+    if (nextState(state) && _protocol)
+        _protocol->onStatus(state);
+}
+
+bool Connector::linkFail(int status, const char *msg)
+{
+    if (status == 0)
+        return false;
+    _lastError = msg;
+    std::cout << "[Connection] " << msg << ": " << libusb_error_name(status) << std::endl;
+    state(PROTOCOL_STATUS_ERROR);
+    return true;
 }
 
 int Connector::send(int cmd, bool encrypt, uint8_t *data, uint32_t size)
@@ -213,7 +238,7 @@ void Connector::setEncryption(bool enabled)
     _ecnrypt = true;
 }
 
-void Connector::printInts(uint32_t length, uint8_t *data, uint16_t max)
+void Connector::printInts(uint8_t *data, uint32_t length, uint16_t max)
 {
     if (data && length >= 4)
     {
@@ -232,7 +257,7 @@ void Connector::printInts(uint32_t length, uint8_t *data, uint16_t max)
     }
 }
 
-void Connector::printBytes(uint32_t length, uint8_t *data, uint16_t max)
+void Connector::printBytes(uint8_t *data, uint32_t length, uint16_t max)
 {
     if (data && length >= 4)
     {
@@ -311,8 +336,6 @@ void Connector::read_loop()
         if (result == LIBUSB_ERROR_NO_DEVICE)
         {
             std::cout << "[Connection] Device disconnected" << std::endl;
-            if (_protocol)
-                _protocol->onDevice(false);
             _connected = false;
             continue;
         }
@@ -357,9 +380,6 @@ void Connector::read_loop()
 
 #ifdef PROTOCOL_DEBUG
         printMessage(header.type, header.length, data, header.magic == MAGIC_ENC, false);
-
-        if (header.type == 7 && header.length < 100)
-            printBytes(header.length, data, 30);
 #endif
 
         if (padding > 0)
@@ -375,20 +395,20 @@ void Connector::write_loop()
 
     // Set thread name
     setThreadName("protocol-writer");
+    state(PROTOCOL_STATUS_LINKING);    
 
     while (_active)
     {
         _connected = connect(Settings::vendorid, Settings::productid);
         if (_connected)
         {
-            status("Initialising dongle");
             std::cout << "[Connection] Device connected" << std::endl;
 
             _read_thread = std::thread(&Connector::read_loop, this);
             if (_protocol)
                 _protocol->onDevice(true);
 
-            status("Waiting for connecton");
+            state(PROTOCOL_STATUS_ONLINE);
             while (_connected && _active)
             {
                 send(170);
@@ -397,7 +417,14 @@ void Connector::write_loop()
                             { return !_active.load(); });
             }
 
-            if(_read_thread.joinable())
+            if (_active)
+            {
+                state(PROTOCOL_STATUS_NO_DEVICE);
+                if (_protocol)
+                    _protocol->onDevice(false);
+            }
+
+            if (_read_thread.joinable())
                 _read_thread.join();
         }
         std::unique_lock<std::mutex> lock(mtx);

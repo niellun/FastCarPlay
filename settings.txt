@@ -1,27 +1,72 @@
-# Dongle configuration
+##############################################################################
+# 1.General settings
+##############################################################################
+
+# Dongle configuration (use lsusb to find yours)
 # Note that vendor id and product id are in decimals, not hex here
 #vendor-id = 4884 # 0x1314
 #product-id = 5408 # 0x1520
-
-# Application starts in full screen
-#fullscreen = true
-
-
-# Application drawing settings widthxheight
-#width = 720
-#height = 576
-#fps = 50 
-
-# Enable vsync. This reduce tearing but can dramatically affect performance on low end systems 
-#vsync = false
-
-# Target DPI reported to device. Set 0 for default
-#dpi = 0
 
 # Requested image from phone 
 #source-width = 720
 #source-height = 576
 #source-fps = 50    
+
+# Application drawing settings widthxheight
+#width = 720
+#height = 576
+
+# Application drawing target framerate. This can responsiveness.
+# If the setting is lower than source-fps the framse will be dropped
+# If the setting is not multiple of source-fps can still cause frame drops cause out-of-sync 
+# source images and drawing times
+#fps = 50 
+
+# Application starts in full screen
+#fullscreen = true
+
+# Enable generic console logging. Can reduce performace
+#logging = false 
+
+##############################################################################
+# 2.Device configurations
+##############################################################################
+
+# USB communication protocol encryption
+# From 2024 Carlinkit has an optinal USB protocol encryption
+# It can happened that it will become mandatory and device will not work withou it
+# So if you have updated your device and it stop working try to enable encryption
+#encryption = false
+
+# Enable automatic connection to wireless devices
+#autoconnect = true
+
+# Eanble weak charging current (standart usb 0.5A).
+# If you have a powerfull poswer supply you can try to disable this.
+# If you have troubles with wired connection try to enable this, cause it might be cause of power lack.
+#weak-charge = true
+
+# Driving position, true for left hand drive, false for right hand drive
+#left-hand-drive = true
+
+# Nigh mode. 0 for day mode, 1 for night mode, 2 for automatic
+#night-mode = 2
+
+# Target DPI reported to device. Set 0 for default. Not sure if it affects anything
+#dpi = 0
+
+##############################################################################
+# 3.Application configuration
+##############################################################################
+
+# Font size for messgaes on screen. Set to 0 is you do not want any
+#font-size = 30
+
+# Enable vsync. This reduce tearing but can dramatically affect performance on low end systems 
+#vsync = false
+
+# Corrects aspect of UI
+#aspect-correction = 1
 
 # Scaler algorithm if application drawing is differen from source image
 # It's recommended to keep application and source values same cause scaling
@@ -45,9 +90,6 @@
 # Select faster method of scaling image to window size (nearest) or better quality (linear)
 #fast-render-scale = false
 
-# Enable logging
-#logging = false 
-
 # Size of video and audio buffers. Increase if you see artifacts
 #video-buffer-size = 32
 #audio-buffer-size = 16
@@ -60,18 +102,6 @@
 # This will reduce volume of the music if there is navigation instructions
 # Reduction level from 1 (no reduction) to 0 (fully silenced)
 #audio-fade = 0.3
-
-# Font size for messgaes on screen. Set to 0 is you do not want any
-#font-size = 30
-
-# USB communication protocol encryption
-# From 2024 Carlinkit has an optinal USB protocol encryption
-# It can happened that it will become mandatory and device will not work withou it
-# So if you have updated your device and it stop working try to enable encryption
-#encryption = false
-
-# Enable automatic connection to wireless devices
-#autoconnect = true
 
 # Run script or app on phone connected and disconnected. 
 # This script/app should be fast, otherwise it will block system. 
@@ -90,10 +120,15 @@
 #on-connect-script = 
 #on-disconnect-script = 
 
-# Protocol debug level. Works on debug builds only with PROTOCOL_DEBUG flag set.
+##############################################################################
+# 4.Debug
+##############################################################################
+
+# Protocol debug level. Works only on builds only with PROTOCOL_DEBUG flag set.
+# Add -DPROTOCOL_DEBUG to CXXCOMMON to enable protocol debugging and rebuild.
 # 0 - nothing
 # 1 - unknown commands
 # 2 - all commands except data streams
 # 3 - include outgoing commands
 # 4 - log everything
-#protocol-debug = 0 
+# protocol-debug = 0

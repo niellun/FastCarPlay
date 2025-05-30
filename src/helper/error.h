@@ -3,6 +3,7 @@
 
 #include <string>
 #include <stdexcept>
+#include "helper/functions.h"
 
 extern "C"
 {
@@ -45,14 +46,6 @@ public:
         }
 
         return false;
-    }
-
-    static const std::string avErrorText(int code)
-    {
-        char buf[AV_ERROR_MAX_STRING_SIZE] = {0};
-        if (av_strerror(code, buf, sizeof(buf)) == 0)
-            return buf;
-        return "Unknown error";
     }
 
     bool avFail(int code, const std::string &message = "")

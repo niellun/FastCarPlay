@@ -23,9 +23,10 @@ Protocol::~Protocol()
     stop();
 }
 
-void Protocol::start(StatusCallback onStatus)
+void Protocol::start(uint32_t evtStatus, uint32_t evtPhone)
 {
-    _statusCallback = onStatus;
+    _evtStatusId = evtStatus;
+    _evtPhoneId = evtPhone;
     connector.start(this);
 }
 
@@ -146,10 +147,9 @@ void Protocol::sendEncryption()
     connector.send(CMD_ENCRYPTION, false, buf, 4);
 }
 
-void Protocol::onStatus(const char *status)
+void Protocol::onStatus(uint8_t status)
 {
-    if (_statusCallback)
-        _statusCallback(status);
+    pushEvent(_evtStatusId, status);
 }
 
 void Protocol::onDevice(bool connected)
@@ -162,9 +162,12 @@ void Protocol::onDevice(bool connected)
         if (Settings::dpi > 0)
             sendFile("/tmp/screen_dpi", Settings::dpi);
         sendFile("/etc/android_work_mode", 1);
-        sendFile("/tmp/night_mode", 2);      // 0==day, 1==night, 2==???
-        sendFile("/tmp/hand_drive_mode", 0); // 0==left, 1==right
-        sendFile("/tmp/charge_mode", 0);
+        if (Settings::nightMode < 0 || Settings::nightMode > 2) // 0==day, 1==night, 2==auto
+            sendFile("/tmp/night_mode", 2);
+        else
+            sendFile("/tmp/night_mode", Settings::nightMode);
+        sendFile("/tmp/hand_drive_mode", Settings::leftDrive ? 0 : 1); // 0==left, 1==right
+        sendFile("/tmp/charge_mode", Settings::weakCharge ? 0 : 2);    // Weak charge 0, other 2
         sendFile("/etc/box_name", "CarPlay");
         if (Settings::autoconnect)
             sendInt(CMD_CONTROL, 1002);
@@ -186,6 +189,8 @@ void Protocol::onPhone(bool connected)
 
     std::cout << (connected ? "[Protocol] Phone connected" : "[Protocol] Phone disconnected") << std::endl;
 
+    pushEvent(_evtPhoneId, connected ? 1 : 0);
+
     if (connected && Settings::onConnect.value.length() > 1)
         execute(Settings::onConnect.value.c_str());
 
@@ -198,6 +203,14 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     bool dispose = true;
     switch (cmd)
     {
+    case CMD_PLUGGED:
+        onPhone(true);
+        break;
+
+    case CMD_UNPLUGGED:
+        onPhone(false);
+        break;
+
     case CMD_VIDEO_DATA:
     {
         if (length <= 20)
@@ -228,12 +241,8 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
         }
         break;
     }
-    case CMD_PLUGGED:
-        onPhone(true);
-        break;
-
-    case CMD_UNPLUGGED:
-        onPhone(false);
+    case CMD_CONTROL:
+        Connector::printBytes(data, length, 20);
         break;
 
     case CMD_ENCRYPTION:

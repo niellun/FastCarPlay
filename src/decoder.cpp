@@ -63,7 +63,7 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
             return result;
         }
 
-        std::cout << "[Video] Can't load HW codec " << codec->name << ": " << Error::avErrorText(ret) << std::endl;
+        std::cout << "[Video] Can't load HW codec " << codec->name << ": " << avErrorText(ret) << std::endl;
         avcodec_free_context(&result);
     }
 
@@ -85,7 +85,7 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
     int ret = avcodec_open2(result, codec, nullptr);
     if (ret < 0)
     {
-        std::cout << "[Video] Failed to open software decoder " << codec->name << ": " << Error::avErrorText(ret) << std::endl;
+        std::cout << "[Video] Failed to open software decoder " << codec->name << ": " << avErrorText(ret) << std::endl;
         avcodec_free_context(&result);
         return nullptr;
     }
@@ -177,7 +177,7 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
             int send_ret = avcodec_send_packet(context, packet);
             if (send_ret != 0)
             {
-                std::cout << "[Video] Can't decode packet: " << Error::avErrorText(send_ret) << std::endl;
+                std::cout << "[Video] Can't decode packet: " << avErrorText(send_ret) << std::endl;
                 continue;
             }
 

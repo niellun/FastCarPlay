@@ -9,7 +9,6 @@
 
 #include "struct/atomic_queue.h"
 #include "struct/message.h"
-#include "helper/error.h"
 
 #define FADE_IN_SPEED 0.00001
 #define FADE_OUT_SPEED 0.0001

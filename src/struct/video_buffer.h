@@ -75,6 +75,13 @@ public:
         _latest.store(_writing.load());
     }
 
+    void reset()
+    {
+        _writing.store(0);
+        _reading.store(-1);
+        _latest.store(-1);
+    }
+
 private:
     std::atomic<int8_t> _latest;
     std::atomic<int8_t> _reading;

@@ -10,7 +10,7 @@ BUILD_DIR := $(OUT_DIR)/$(BUILD_TYPE)
 SRCS := $(shell find $(SRC_DIR) -type f -name '*.cpp')
 OBJS=$(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SRCS))
 
-RES := $(shell find $(RES_DIR) -type f ! -name '*.h' -name '*.*')
+RES := $(shell find $(RES_DIR) -type f ! -name '*.h' ! -name '.*' -name '*.*')
 RES_SRC := $(patsubst $(RES_DIR)/%,$(GEN_DIR)/%.cpp,$(RES))
 
 # Targets
