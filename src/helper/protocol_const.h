@@ -24,16 +24,20 @@
 #define CMD_BLUETOOTH_INFO 13
 #define CMD_WIFI_INFO 14
 #define CMD_DEVICE_LIST 18
-#define CMD_JSON_CONTROL 25
 #define CMD_MANUFACTURER 20
+#define CMD_UNKNOWN_22 22 // > int 2 + data, 3 - open camer 4 - close camera
+#define CMD_JSON_CONTROL 25
 #define CMD_UNKNOWN_38 38
-#define CMD_MEDIA_INFO 42
-#define CMD_SEND_FILE 153
-#define CMD_UNKNOWN_136 136
-#define CMD_DAYNIGHT 162
-#define CMD_HEARTBEAT 170
-#define CMD_VERSION 204
-#define CMD_ENCRYPTION 240
+#define CMD_MEDIA_INFO 42 
+#define CMD_UNKNOWN_119 119 // > 0 EVT_APP_RESET
+#define CMD_DEBUG_LOG 136 // < > int 1/2 ???
+#define CMD_SEND_FILE 153 // < int size + ANSI string path \0 + int size + byte data
+#define CMD_UNKNOWN_161 161 // > 0 EVT_APP_LOG_GET
+#define CMD_HEARTBEAT 170 // < 0 every 2 second
+#define CMD_UPDATE_PROGRESS 177 // > int ???
+#define CMD_UPDATE_ISTATUS 187 // > int ???
+#define CMD_BOX_SW_VERSION 204 // > 32 byte ANSI string box version
+#define CMD_ENCRYPTION 240  // < int key, > 0 support encryption
 
 struct ProtocolCmdEntry
 {
@@ -57,10 +61,10 @@ const ProtocolCmdEntry protocolCmdList[] = {
     {CMD_JSON_CONTROL, "Control JSON"},
     {CMD_MANUFACTURER, "Manufacturer"},
     {CMD_MEDIA_INFO, "Media info"},
+    {CMD_DEBUG_LOG, "Debug"},    
     {CMD_SEND_FILE, "File"},
-    {CMD_DAYNIGHT, "DeyNight Mode"},
     {CMD_HEARTBEAT, "Heartbeat"},
-    {CMD_VERSION, "Version"},
+    {CMD_BOX_SW_VERSION, "Box SW version"},
     {CMD_ENCRYPTION, "Encryption"}};
 
 
