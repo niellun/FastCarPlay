@@ -171,6 +171,15 @@ void Protocol::onDevice(bool connected)
         sendFile("/etc/box_name", "CarPlay");
         if (Settings::autoconnect)
             sendInt(CMD_CONTROL, 1002);
+        sendInt(CMD_CONTROL, Settings::bluetoothAudio ? 22 : 23);
+        sendInt(CMD_CONTROL, Settings::wifi5 ? 25 : 24);
+        int mic = 7;
+        if (Settings::micType == 2)
+            mic = 15;
+        if (Settings::micType == 3)
+            mic = 21;
+        sendInt(CMD_CONTROL, mic);
+
         if (Settings::encryption)
             sendEncryption();
     }

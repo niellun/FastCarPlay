@@ -52,6 +52,18 @@
 # Nigh mode. 0 for day mode, 1 for night mode, 2 for automatic
 #night-mode = 2
 
+# Enable 5Ghz wifi. Otherwise will use 2,4Ghz
+#wifi-5 = true
+
+# Enable bluetooth audio. If enables the audio will be played not through the dongle but through bluetooth connection
+#bluetooth-audio = false
+
+# Microphone in use. Copied directly from carlinkit app.
+# 1 - Car
+# 2 - Box
+# 3 - Phone
+#mic-type = 1   
+
 # Target DPI reported to device. Set 0 for default. Not sure if it affects anything
 #dpi = 0
 

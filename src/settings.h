@@ -24,7 +24,10 @@ public:
     static inline Setting<bool> autoconnect{"autoconnect", true};
     static inline Setting<bool> weakCharge{"weak-charge", true};
     static inline Setting<bool> leftDrive{"left-hand-drive", true};
-    static inline Setting<int> nightMode{"night-mode", 2};        
+    static inline Setting<int> nightMode{"night-mode", 2};     
+    static inline Setting<bool> wifi5{"wifi-5", true};   
+    static inline Setting<bool> bluetoothAudio{"bluetooth-audio", false};    
+    static inline Setting<int> micType{"mic-type", 1};               
     static inline Setting<int> dpi{"dpi", 0};
 
     // Application configuration section
