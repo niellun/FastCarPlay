@@ -23,7 +23,6 @@ public:
     void stop();
 
     void sendKey(int key);
-    void sendInit(int width, int height, int fps);
     void sendFile(const char *filename, const uint8_t *data, uint32_t length);
     void sendFile(const char *filename, const char *value);
     void sendFile(const char *filename, int value);
@@ -35,10 +34,14 @@ public:
     AtomicQueue<Message> audioStreamMain;
     AtomicQueue<Message> audioStreamAux;
     bool phoneConnected;
+    bool phoneAndroid;
 
 private:
     void sendInt(uint32_t cmd, uint32_t value, bool encryption = true);
+    void sendString(uint32_t cmd, char *str, bool encryption = true);
     void sendEncryption();
+    void sendInit(int width, int height, int fps);
+    void sendConfig();
 
     void onStatus(uint8_t status) override;
     void onDevice(bool connected) override;
@@ -46,12 +49,15 @@ private:
 
     void onPhone(bool connected);
 
+    bool jsonFind(const char *json, uint16_t length, const char *key, char *value, uint16_t size) const;
+
     uint16_t _width;
     uint16_t _height;
     uint16_t _fps;
+    bool _phoneInfo;
 
-    uint32_t _evtStatusId = (uint32_t) -1;
-    uint32_t _evtPhoneId = (uint32_t) -1;
+    uint32_t _evtStatusId = (uint32_t)-1;
+    uint32_t _evtPhoneId = (uint32_t)-1;
 };
 
 #endif /* SRC_PROTOCOL */

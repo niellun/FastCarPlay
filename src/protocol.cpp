@@ -12,9 +12,11 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t paddi
       audioStreamMain(Settings::audioQueue),
       audioStreamAux(Settings::audioQueue),
       phoneConnected(false),
+      phoneAndroid(false),
       _width(width),
       _height(height),
-      _fps(fps)
+      _fps(fps),
+      _phoneInfo(false)
 {
 }
 
@@ -47,6 +49,57 @@ void Protocol::sendInit(int width, int height, int fps)
     write_uint32_le(&buf[24], 2);
 
     connector.send(1, true, buf, 28);
+}
+
+void Protocol::sendConfig()
+{
+    int syncTime = std::time(nullptr);
+    int mediaDelay = 300;
+    int drivePosition = Settings::leftDrive ? 0 : 1; // 0==left, 1==right
+    int nightMode = Settings::nightMode;             // 0==day, 1==night, 2==auto
+    if (nightMode < 0 || nightMode > 2)
+        nightMode = 2;
+    int mic = 7;
+    if (Settings::micType == 2)
+        mic = 15;
+    if (Settings::micType == 3)
+        mic = 21;
+
+    float aspect = (float)_width / _height;
+    int height = 480;
+    if (Settings::androidMode == 2)
+        height = 1280;
+    if (Settings::androidMode == 3)
+        height = 1920;
+    int width = aspect*height;
+    if (aspect < 1)
+    {
+        width = height;
+        height = height/aspect;
+    }
+
+    char buffer[512];
+    snprintf(buffer, sizeof(buffer),
+             "{\"syncTime\":%d,\"mediaDelay\":%d,\"drivePosition\":%d,"
+             "\"androidAutoSizeW\":%d,\"androidAutoSizeH\":%d,\"HiCarConnectMode\":0,"
+             "\"GNSSCapability\":7,\"DashboardInfo\":1,\"UseBTPhone\":0}",
+             syncTime, mediaDelay, drivePosition, width, height);
+
+    sendString(CMD_JSON_CONTROL, buffer);
+
+    snprintf(buffer, sizeof(buffer), "{\"DayNightMode\":%d}", nightMode);
+    sendString(CMD_DAYNIGHT, buffer);
+
+    sendFile("/tmp/night_mode", nightMode);
+    sendFile("/tmp/charge_mode", Settings::weakCharge ? 0 : 2); // Weak charge 0, other 2
+    sendFile("/etc/box_name", "CarPlay");
+    sendFile("/tmp/hand_drive_mode", drivePosition);
+
+    sendInt(CMD_CONTROL, mic);
+    sendInt(CMD_CONTROL, Settings::wifi5 ? 25 : 24);
+    sendInt(CMD_CONTROL, Settings::bluetoothAudio ? 22 : 23);
+    if (Settings::autoconnect)
+        sendInt(CMD_CONTROL, 1002);
 }
 
 void Protocol::sendKey(int key)
@@ -134,6 +187,12 @@ void Protocol::sendInt(uint32_t cmd, uint32_t value, bool encryption)
     connector.send(cmd, encryption, buf, 4);
 }
 
+void Protocol::sendString(uint32_t cmd, char *str, bool encryption)
+{
+    uint32_t total = strlen(str);
+    connector.send(cmd, true, (uint8_t *)str, total);
+}
+
 void Protocol::sendEncryption()
 {
     AESCipher *cypher = connector.Cypher();
@@ -147,6 +206,42 @@ void Protocol::sendEncryption()
     connector.send(CMD_ENCRYPTION, false, buf, 4);
 }
 
+bool Protocol::jsonFind(const char *json, uint16_t length, const char *key, char *value, uint16_t size) const
+{
+    size_t key_len = std::strlen(key);
+    const char *end = json + length;
+    const char *p = json;
+
+    while (p < end - key_len - 3)
+    {
+        if (*p == '"' && *(p + 1 + key_len) == '"' && std::memcmp(p + 1, key, key_len) == 0)
+        {
+            const char *colon = p + 1 + key_len + 1;
+            while (colon < end && *colon == ' ')
+                ++colon;
+            if (colon >= end || *colon != ':')
+                return false;
+
+            const char *val_start = colon + 1;
+            while (val_start < end && (*val_start == ' ' || *val_start == '"'))
+                ++val_start;
+
+            const char *val_end = val_start;
+            while (val_end < end && *val_end != ',' && *val_end != '}' && *val_end != '"')
+                ++val_end;
+
+            uint16_t val_len = val_end - val_start;
+            if (val_len + 1 > size)
+                return false;
+            std::memcpy(value, val_start, val_len);
+            value[val_len] = '\0';
+            return true;
+        }
+        ++p;
+    }
+    return false;
+}
+
 void Protocol::onStatus(uint8_t status)
 {
     pushEvent(_evtStatusId, status);
@@ -158,30 +253,11 @@ void Protocol::onDevice(bool connected)
     {
         if (Settings::encryption)
             sendEncryption();
-        sendInit(_width, _height, _fps);
         if (Settings::dpi > 0)
             sendFile("/tmp/screen_dpi", Settings::dpi);
         sendFile("/etc/android_work_mode", 1);
-        if (Settings::nightMode < 0 || Settings::nightMode > 2) // 0==day, 1==night, 2==auto
-            sendFile("/tmp/night_mode", 2);
-        else
-            sendFile("/tmp/night_mode", Settings::nightMode);
-        sendFile("/tmp/hand_drive_mode", Settings::leftDrive ? 0 : 1); // 0==left, 1==right
-        sendFile("/tmp/charge_mode", Settings::weakCharge ? 0 : 2);    // Weak charge 0, other 2
-        sendFile("/etc/box_name", "CarPlay");
-        if (Settings::autoconnect)
-            sendInt(CMD_CONTROL, 1002);
-        sendInt(CMD_CONTROL, Settings::bluetoothAudio ? 22 : 23);
-        sendInt(CMD_CONTROL, Settings::wifi5 ? 25 : 24);
-        int mic = 7;
-        if (Settings::micType == 2)
-            mic = 15;
-        if (Settings::micType == 3)
-            mic = 21;
-        sendInt(CMD_CONTROL, mic);
-
-        if (Settings::encryption)
-            sendEncryption();
+        sendInit(_width, _height, _fps);
+        sendConfig();
     }
     else
     {
@@ -212,12 +288,26 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     bool dispose = true;
     switch (cmd)
     {
+    case CMD_JSON_CONTROL:
+        if (!_phoneInfo)
+        {
+            char res[32];
+            if (jsonFind((char *)data, length, "MDLinkType", res, 32))
+            {
+                _phoneInfo = true;
+                phoneAndroid = strncmp(res, "AndroidAuto", 11) == 0;
+            }
+        }
+        break;
+
     case CMD_PLUGGED:
         onPhone(true);
         break;
 
     case CMD_UNPLUGGED:
         onPhone(false);
+        _phoneInfo = false;
+        phoneAndroid = false;
         break;
 
     case CMD_VIDEO_DATA:
@@ -250,10 +340,6 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
         }
         break;
     }
-    case CMD_CONTROL:
-        Connector::printBytes(data, length, 20);
-        break;
-
     case CMD_ENCRYPTION:
         if (length == 0)
             connector.setEncryption(true);

@@ -51,6 +51,7 @@ public:
     Renderer(SDL_Renderer *renderer);
     ~Renderer();
 
+    bool prepare(AVFrame *frame, int targetWidth, int targetHeight, uint32_t scaler, bool android, float *cropX, float *cropY);
     bool render(AVFrame *frame);
 
 protected:
@@ -64,25 +65,33 @@ private:
         AVPixelFormat avFormat;
         SDL_PixelFormatEnum sdlFormat;
         DrawFuncType function;
+        DrawFuncType functionCrop;
         std::string name;
+        uint8_t bpp;
     };
 
-    bool prepare(AVFrame *frame, int targetWidth, int targetHeight, uint32_t scaler);
+    void clear();    
     bool prepareTexture(uint32_t format, int width, int height);
 
     void rgb(AVFrame *frame);
     void nv(AVFrame *frame);
     void yuv(AVFrame *frame);
+    void crgb(AVFrame *frame);
+    void cnv(AVFrame *frame);
+    void cyuv(AVFrame *frame);
+    void cscale(AVFrame *frame);
     void scale(AVFrame *frame);
 
     SDL_Texture *_texture;
     int _textureWidth;
     int _textureHeight;
+    int _cropX;
+    int _cropY;
+    bool _crop;
+    uint8_t _bytesPerPixel;
 
     DrawFuncType _render;
     SwsContext *_sws;
-    int _swsWidth;
-    int _swsHeight;
     AVFrame *_frame;
     static const FormatMapping _mapping[];
 };

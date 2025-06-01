@@ -251,7 +251,7 @@ void Connector::printInts(uint8_t *data, uint32_t length, uint16_t max)
                 ((uint32_t)data[i * 4 + 1] << 8) |
                 ((uint32_t)data[i * 4 + 2] << 16) |
                 ((uint32_t)data[i * 4 + 3] << 24);
-            std::cout << val;
+            std::cout << val << " ";
         }
         std::cout << std::endl;
     }
@@ -293,7 +293,8 @@ void Connector::printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool 
     if (Settings::protocolDebug < PROTOCOL_DEBUG_OUT && out)
         return;
 
-    bool stream = (cmd == CMD_AUDIO_DATA || cmd == CMD_VIDEO_DATA) && length > 50;
+    bool stream = (cmd == CMD_AUDIO_DATA || cmd == CMD_VIDEO_DATA) && length > 150;
+    stream = stream || cmd == CMD_HEARTBEAT;
     if (Settings::protocolDebug < PROTOCOL_DEBUG_ALL && stream)
         return;
 

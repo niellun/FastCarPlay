@@ -23,7 +23,7 @@ extern "C"
 
 #define FRAME_DELAY_INACTIVE 200
 
-static const char *title = "Fast Car Play v0.3";
+static const char *title = "Fast Car Play v0.4";
 static SDL_Window *window = nullptr;
 static SDL_Renderer *renderer = nullptr;
 Uint32 evtStatus = (Uint32)-1;
@@ -33,6 +33,7 @@ bool active = true;
 struct RunParams
 {
     bool connected;
+    bool videoPrepaired;
     bool videoRendered;
     bool dirty;
     bool fullscreen;
@@ -40,6 +41,8 @@ struct RunParams
     uint8_t deviceStatus;
     uint32_t frameDelay;
     int activeDelay;
+    float cropX;
+    float cropY;
 };
 
 void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
@@ -132,13 +135,15 @@ void processEvents(Protocol &protocol, RunParams &params, VideoBuffer &vb)
         {
             if (e.type == evtConnected)
             {
-                printf("\nEvt connected %d\n", e.user.code);
                 params.connected = e.user.code != 0;
                 params.dirty = true;
                 params.videoRendered = false;
                 params.frameDelay = params.connected ? params.activeDelay : FRAME_DELAY_INACTIVE;
                 if (!params.connected)
+                {
                     vb.reset();
+                    params.videoPrepaired = false;
+                }
             }
             else if (e.type == evtStatus)
             {
@@ -153,11 +158,11 @@ void processEvents(Protocol &protocol, RunParams &params, VideoBuffer &vb)
         int window_width, window_height;
         SDL_GetWindowSize(window, &window_width, &window_height);
         if (downX >= 0)
-            protocol.sendClick(1.0 * downX / window_width, 1.0 * downY / window_height, true);
+            protocol.sendClick(params.cropX * downX / window_width, params.cropY * downY / window_height, true);
         if (motionX >= 0)
-            protocol.sendMove(1.0 * motionX / window_width, 1.0 * motionY / window_height);
+            protocol.sendMove(params.cropX * motionX / window_width, params.cropY * motionY / window_height);
         if (upX >= 0)
-            protocol.sendClick(1.0 * upX / window_width, 1.0 * upY / window_height, false);
+            protocol.sendClick(params.cropX * upX / window_width, params.cropY * upY / window_height, false);
     }
 }
 
@@ -169,9 +174,12 @@ void application()
     p.deviceStatus = PROTOCOL_STATUS_INITIALISING;
     p.dirty = false;
     p.frameDelay = FRAME_DELAY_INACTIVE;
+    p.videoPrepaired = false;
     p.videoRendered = false;
     p.fullscreen = Settings::fullscreen;
     p.mouseDown = false;
+    p.cropX = 1;
+    p.cropY = 1;
 
     if (p.fullscreen)
     {
@@ -184,7 +192,7 @@ void application()
     SDL_RenderPresent(renderer);                    // Present initial blank frame
 
     VideoBuffer videoBuffer;
-    Protocol protocol(Settings::sourceWidth, Settings::sourceHeight, Settings::sourceFps, AV_INPUT_BUFFER_PADDING_SIZE);
+    Protocol protocol(Settings::width, Settings::height, Settings::sourceFps, AV_INPUT_BUFFER_PADDING_SIZE);
     Decoder decoder;
     PcmAudio audioMain("Main"), audioAux("Aux");
     decoder.start(&protocol.videoData, &videoBuffer, AV_CODEC_ID_H264);
@@ -206,6 +214,8 @@ void application()
             uint32_t frameid = 0;
             if (videoBuffer.latest(&frame, &frameid) && (frameid != latestid || p.dirty) && frame)
             {
+                if (!p.videoPrepaired)
+                    p.videoPrepaired = interface.prepare(frame, Settings::width, Settings::height, Settings::scaler, protocol.phoneAndroid, &p.cropX, &p.cropY);
                 if (interface.render(frame))
                 {
                     p.videoRendered = true;

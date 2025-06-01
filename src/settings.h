@@ -9,12 +9,10 @@ class Settings
 public:
     // General section
     static inline Setting<int> vendorid{"vendor-id", 4884};
-    static inline Setting<int> productid{"product-id ", 5408};
-    static inline Setting<int> sourceWidth{"source-width", 720};
-    static inline Setting<int> sourceHeight{"source-height", 576};
-    static inline Setting<int> sourceFps{"source-fps", 50};
+    static inline Setting<int> productid{"product-id", 5408};
     static inline Setting<int> width{"width", 720};
     static inline Setting<int> height{"height", 576};
+    static inline Setting<int> sourceFps{"source-fps", 50};
     static inline Setting<int> fps{"fps", 50};
     static inline Setting<bool> fullscreen{"fullscreen", true};
     static inline Setting<bool> logging{"logging", false};
@@ -24,16 +22,17 @@ public:
     static inline Setting<bool> autoconnect{"autoconnect", true};
     static inline Setting<bool> weakCharge{"weak-charge", true};
     static inline Setting<bool> leftDrive{"left-hand-drive", true};
-    static inline Setting<int> nightMode{"night-mode", 2};     
-    static inline Setting<bool> wifi5{"wifi-5", true};   
-    static inline Setting<bool> bluetoothAudio{"bluetooth-audio", false};    
-    static inline Setting<int> micType{"mic-type", 1};               
-    static inline Setting<int> dpi{"dpi", 0};
+    static inline Setting<int> nightMode{"night-mode", 2};
+    static inline Setting<bool> wifi5{"wifi-5", true};
+    static inline Setting<bool> bluetoothAudio{"bluetooth-audio", false};
+    static inline Setting<int> micType{"mic-type", 1};
+    static inline Setting<int> dpi{"android-dpi", 120};        
+    static inline Setting<int> androidMode{"android-resolution", 0};
 
-    // Application configuration section
-    static inline Setting<int> fontSize{"font-size", 30};    
+    // Application configuration section 
+    static inline Setting<int> fontSize{"font-size", 30};
     static inline Setting<bool> vsync{"vsync", false};
-    static inline Setting<float> aspectCorrection{"aspect-correction", 1};    
+    static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<int> scaler{"scaler", 2};
     static inline Setting<bool> fastScale{"fast-render-scale", false};
     static inline Setting<int> videoQueue{"video-buffer-size", 32};

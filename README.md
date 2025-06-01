@@ -98,11 +98,12 @@ Done
 - ✓ Add abilities to run script on device connect and device disconnect
 - ✓ Add encrypted USB communication option with magic code 0x55bb55bb for new firmware
 - ✓ Improve touch responsiveness
-- ✓ Protocol debugging option
+- ✓ Protocol debugging option + python script to decode usb dumps
+- ✓ Android Auto (have not tested much, but seems to work for me)
 
 Next 
 - Add microphone support (Calls, Siri)
-- Support Android Auto (message me if you have idea how it suppose to work with this dongle)
+- CAR menu with status, settings and options to run custom scripts
 
 
 ## Acknowledgement
