@@ -51,15 +51,13 @@ Connector::~Connector()
     }
 }
 
-void Connector::start(IProtocol *protocol)
+void Connector::start()
 {
-    _protocol = protocol;
-
     if (_active)
         stop();
 
     _active = true;
-    _write_thread = std::thread(&Connector::write_loop, this);
+    _write_thread = std::thread(&Connector::writeLoop, this);
 }
 
 void Connector::stop()
@@ -166,8 +164,8 @@ bool Connector::nextState(u_int8_t state)
 
 void Connector::state(u_int8_t state)
 {
-    if (nextState(state) && _protocol)
-        _protocol->onStatus(state);
+    if (nextState(state))
+        onStatus(state);
 }
 
 bool Connector::linkFail(int status, const char *msg)
@@ -312,7 +310,7 @@ void Connector::printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool 
     std::cout << oss.str() << std::endl;
 }
 
-void Connector::read_loop()
+void Connector::readLoop()
 {
     std::mutex mtx;
     std::condition_variable cv;
@@ -351,12 +349,6 @@ void Connector::read_loop()
             libusb_bulk_transfer(_device, _endpoint_in, data, header.length, &transferred, READ_TIMEOUT);
         }
 
-        if (!_protocol)
-        {
-            free(data);
-            continue;
-        }
-
         if (header.magic == MAGIC_ENC)
         {
             if (!_cipher)
@@ -377,11 +369,11 @@ void Connector::read_loop()
 
         if (padding > 0)
             std::fill(data + header.length, data + header.length + padding, 0);
-        _protocol->onData(header.type, header.length, data);
+        onData(header.type, header.length, data);
     }
 }
 
-void Connector::write_loop()
+void Connector::writeLoop()
 {
     std::mutex mtx;
     std::condition_variable cv;
@@ -397,9 +389,8 @@ void Connector::write_loop()
         {
             std::cout << "[Connection] Device connected" << std::endl;
 
-            _read_thread = std::thread(&Connector::read_loop, this);
-            if (_protocol)
-                _protocol->onDevice(true);
+            _read_thread = std::thread(&Connector::readLoop, this);
+            onDevice(true);
 
             state(PROTOCOL_STATUS_ONLINE);
             while (_connected && _active)
@@ -413,8 +404,7 @@ void Connector::write_loop()
             if (_active)
             {
                 state(PROTOCOL_STATUS_NO_DEVICE);
-                if (_protocol)
-                    _protocol->onDevice(false);
+                onDevice(false);
             }
 
             if (_read_thread.joinable())

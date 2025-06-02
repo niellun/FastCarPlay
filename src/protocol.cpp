@@ -7,32 +7,32 @@
 #include <cctype>
 
 Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t padding)
-    : connector(padding),
+    : Connector(padding),
       videoData(Settings::videoQueue),
       audioStreamMain(Settings::audioQueue),
       audioStreamAux(Settings::audioQueue),
-      phoneConnected(false),
       _width(width),
       _height(height),
-      _fps(fps)
+      _fps(fps),
+      _phoneConnected(false)
+
 {
 }
 
 Protocol::~Protocol()
 {
-    stop();
 }
 
 void Protocol::start(uint32_t evtStatus, uint32_t evtPhone)
 {
     _evtStatusId = evtStatus;
     _evtPhoneId = evtPhone;
-    connector.start(this);
+    Connector::start();
 }
 
 void Protocol::stop()
 {
-    connector.stop();
+    Connector::stop();
 }
 
 void Protocol::sendInit(int width, int height, int fps)
@@ -46,7 +46,7 @@ void Protocol::sendInit(int width, int height, int fps)
     write_uint32_le(&buf[20], 2);
     write_uint32_le(&buf[24], 2);
 
-    connector.send(1, true, buf, 28);
+    send(CMD_OPEN, true, buf, 28);
 }
 
 void Protocol::sendConfig()
@@ -118,7 +118,7 @@ void Protocol::sendKey(int key)
     uint8_t buf[4];
     write_uint32_le(&buf[0], key);
 
-    connector.send(8, false, buf, 4);
+    send(CMD_CONTROL, false, buf, 4);
 }
 
 void Protocol::sendFile(const char *filename, const char *value)
@@ -150,7 +150,7 @@ void Protocol::sendClick(float x, float y, bool down)
     write_uint32_le(buf + 4, int(10000 * x));
     write_uint32_le(buf + 8, int(10000 * y));
     write_uint32_le(buf + 12, 0);
-    connector.send(5, false, buf, 16);
+    send(CMD_TOUCH, false, buf, 16);
 }
 
 void Protocol::sendMove(float dx, float dy)
@@ -160,7 +160,7 @@ void Protocol::sendMove(float dx, float dy)
     write_uint32_le(buf + 4, int(10000 * dx));
     write_uint32_le(buf + 8, int(10000 * dy));
     write_uint32_le(buf + 12, 0);
-    connector.send(5, false, buf, 16);
+    send(CMD_TOUCH, false, buf, 16);
 }
 
 void Protocol::sendFile(const char *filename, const uint8_t *data, uint32_t length)
@@ -188,33 +188,32 @@ void Protocol::sendFile(const char *filename, const uint8_t *data, uint32_t leng
     // 4) content bytes
     std::memcpy(buf, data, length);
 
-    connector.send(CMD_SEND_FILE, true, result.data(), total);
+    send(CMD_SEND_FILE, true, result.data(), total);
 }
 
 void Protocol::sendInt(uint32_t cmd, uint32_t value, bool encryption)
 {
     uint8_t buf[4];
     write_uint32_le(buf, value);
-    connector.send(cmd, encryption, buf, 4);
+    send(cmd, encryption, buf, 4);
 }
 
 void Protocol::sendString(uint32_t cmd, char *str, bool encryption)
 {
     uint32_t total = strlen(str);
-    connector.send(cmd, true, (uint8_t *)str, total);
+    send(cmd, true, (uint8_t *)str, total);
 }
 
 void Protocol::sendEncryption()
 {
-    AESCipher *cypher = connector.Cypher();
-    if (!cypher)
+    if (!_cipher)
     {
         std::cout << "[Protocol] Can't enable encryption: cypher is not initalised";
         return;
     }
     uint8_t buf[4];
-    write_uint32_le(buf, cypher->Seed());
-    connector.send(CMD_ENCRYPTION, false, buf, 4);
+    write_uint32_le(buf, _cipher->Seed());
+    send(CMD_ENCRYPTION, false, buf, 4);
 }
 
 void Protocol::onStatus(uint8_t status)
@@ -237,15 +236,15 @@ void Protocol::onDevice(bool connected)
     else
     {
         onPhone(false);
-        connector.setEncryption(false);
+        setEncryption(false);
     }
 }
 
 void Protocol::onPhone(bool connected)
 {
-    if (connected == phoneConnected)
+    if (connected == _phoneConnected)
         return;
-    phoneConnected = connected;
+    _phoneConnected = connected;
 
     std::cout << (connected ? "[Protocol] Phone connected" : "[Protocol] Phone disconnected") << std::endl;
 
@@ -303,7 +302,7 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     }
     case CMD_ENCRYPTION:
         if (length == 0)
-            connector.setEncryption(true);
+            setEncryption(true);
         break;
     }
 

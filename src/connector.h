@@ -8,7 +8,6 @@
 #include <mutex>
 #include <string>
 
-#include "helper/iprotocol.h"
 #include "aes_cipher.h"
 
 #define READ_TIMEOUT 3000
@@ -35,24 +34,30 @@ class Connector
 
 public:
     Connector(uint16_t videoPadding);
-    ~Connector();
+    virtual ~Connector();
 
-    void start(IProtocol *protocol);
+    void start();
     void stop();
 
-    int send(int cmd, bool encrypt = true, uint8_t *data = nullptr, uint32_t size = 0);
-    void setEncryption(bool enabled);
+protected:
 
-    AESCipher *Cypher() const { return _cipher; };
+    int send(int cmd, bool encrypt = true, uint8_t *data = nullptr, uint32_t size = 0);
+    virtual void onData(uint32_t cmd, uint32_t length, uint8_t *data) = 0;
+    virtual void onStatus(u_int8_t status) = 0;
+    virtual void onDevice(bool connected) = 0;
+
+    void setEncryption(bool enabled);
 
     static void printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool encrypted, bool out);
     static void printInts(uint8_t *data, uint32_t length, uint16_t max);
     static void printBytes(uint8_t *data, uint32_t length, uint16_t max);
     static const char *cmdString(int cmd);
 
+    AESCipher *_cipher = nullptr;    
+
 private:
-    void read_loop();
-    void write_loop();
+    void readLoop();
+    void writeLoop();
 
     bool connect(uint16_t vendor_id, uint16_t product_id);
     bool link();
@@ -80,9 +85,6 @@ private:
     std::atomic<bool> _active = false;
 
     u_int16_t _videoPadding;
-
-    IProtocol *_protocol = nullptr;
-    AESCipher *_cipher = nullptr;
 };
 
 #endif /* SRC_CONNECTOR */

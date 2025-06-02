@@ -72,10 +72,9 @@ public:
     {
         unique_lock<std::mutex> lock(_mtx);
 
-        bool exit = _count > count;
         _lock.wait(lock, [&]
                    { return _count > count || !waitFlag; });
-        return !exit;
+        return waitFlag;
     }
 
     void clear()

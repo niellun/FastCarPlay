@@ -149,9 +149,8 @@ void PcmAudio::runner()
     SDL_AudioDeviceID device = 0;
     SDL_AudioSpec spec;
 
-    while (_active)
+    while (_data->wait(_active))
     {
-        _data->wait(_active, Settings::audioDelay);
         const Message *segment = _data->peek();
         if (!segment)
             continue;
