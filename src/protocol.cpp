@@ -52,7 +52,6 @@ void Protocol::sendInit(int width, int height, int fps)
 void Protocol::sendConfig()
 {
     int syncTime = std::time(nullptr);
-    int mediaDelay = 300;
     int drivePosition = Settings::leftDrive ? 0 : 1; // 0==left, 1==right
     int nightMode = Settings::nightMode;             // 0==day, 1==night, 2==auto
     if (nightMode < 0 || nightMode > 2)
@@ -95,7 +94,7 @@ void Protocol::sendConfig()
              "{\"syncTime\":%d,\"mediaDelay\":%d,\"drivePosition\":%d,"
              "\"androidAutoSizeW\":%d,\"androidAutoSizeH\":%d,\"HiCarConnectMode\":0,"
              "\"GNSSCapability\":7,\"DashboardInfo\":1,\"UseBTPhone\":0}",
-             syncTime, mediaDelay, drivePosition, width, height);
+             syncTime, Settings::mediaDelay.value, drivePosition, width, height);
 
     sendString(CMD_JSON_CONTROL, buffer);
 

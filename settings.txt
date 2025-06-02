@@ -77,6 +77,9 @@
 # 3 - 1080p => 1920x1080 
 #android-resolution = 1
 
+# Media delay for android auto
+#android-media-delay = 300
+
 ##############################################################################
 # 3.Application configuration
 ##############################################################################
@@ -105,6 +108,13 @@
 # This will reduce volume of the music if there is navigation instructions
 # Reduction level from 1 (no reduction) to 0 (fully silenced)
 #audio-fade = 0.3
+
+# Force application to use following audio driver as audio output, if empty use default driver
+# See SDL documentation for options. Some of them are
+# alsa - Not supporting multiple channels, navigation over music will not work
+# pulseaudio
+# pipewire
+#audio-driver = 
 
 # Run script or app on phone connected and disconnected. 
 # This script/app should be fast, otherwise it will block system. 

@@ -59,7 +59,7 @@ void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
 
     case SDLK_r:
         params.dirty = true;
-        break;        
+        break;
 
     case SDLK_LEFT:
         protocol.sendKey(100);
@@ -206,11 +206,11 @@ void application()
     Uint32 frameStart = SDL_GetTicks();
     while (active)
     {
-        if(processEvents(protocol, p, interface))
+        if (processEvents(protocol, p, interface))
         {
-            if(p.connected)
+            if (p.connected)
             {
-                decoder.flush();                
+                decoder.flush();
                 videoBuffer.reset();
             }
         }
@@ -253,6 +253,23 @@ void application()
     SDL_HideWindow(window);
 }
 
+bool setAudioDriver()
+{
+    if (Settings::audioDriver.value.length() < 2)
+        return true;
+
+    int num = SDL_GetNumAudioDrivers();
+    for (int i = 0; i < num; ++i)
+    {
+        if (SDL_GetAudioDriver(i) == Settings::audioDriver.value)
+        {
+            SDL_setenv("SDL_AUDIODRIVER", SDL_GetAudioDriver(i), 1);
+            return true;
+        }
+    }
+    return false;
+}
+
 int start()
 {
     if (!Settings::logging)
@@ -260,12 +277,16 @@ int start()
     else
         Settings::print();
 
+    if (!setAudioDriver())
+        std::cerr << "[Main] Not supported audio driver " << Settings::audioDriver.value << std::endl;
+
     // Initialize SDL video subsystem
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0)
     {
         std::cerr << "[Main] SDL initialisation failed: " << SDL_GetError() << std::endl;
         return 1;
     }
+    std::cout << "[Main] SDL audio driver: " << SDL_GetCurrentAudioDriver() << std::endl;
 
     if (TTF_Init() != 0)
     {

@@ -28,11 +28,12 @@ You will see list of devices, try to find the one that looks like dongle. Also y
 Bus 003 Device 066: ID 1314:1520 Magic Communication Tec. Auto Box
 ```
 So in my case ID 1314:1520 shows idVendor 1314 and idProduct 1520. We need to use those to create udev rules. If yours are different you also need to put them in settings.txt and run application with settings.txt as argument. Remember that in settings.txt values are in decimal, so you need to convert hex values to base 10 first. 
-Create udev rules, replace <__Vendor__> <__Product__> and <__Your user__> with your informations
+Create udev rules and add user to plugdev group, replace <__Vendor__> <__Product__> and <__Your user name__> with your informations
 ```
-echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="<Vendor>", ATTRS{idProduct}=="<Product>", GROUP="<Your user>", MODE="0660"' | sudo tee /etc/udev/rules.d/50-carlinkit.rules
-## example
-## SUBSYSTEM=="usb", ATTRS{idVendor}=="1314", ATTRS{idProduct}=="1520", GROUP="linux", MODE="0660"
+echo 'SUBSYSTEMS=="usb", ATTRS{idVendor}=="<Vendor>", ATTRS{idProduct}=="<Product>", GROUP="plugdev", MODE="0660"' | sudo tee /etc/udev/rules.d/50-carlinkit.rules
+## example: SUBSYSTEM=="usb", ATTRS{idVendor}=="1314", ATTRS{idProduct}=="1520", GROUP="plugdev", MODE="0660"
+sudo usermod -aG plugdev <Your user name>
+## example: sudo usermod -aG plugdev linux
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```

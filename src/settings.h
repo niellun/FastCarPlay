@@ -28,6 +28,9 @@ public:
     static inline Setting<int> micType{"mic-type", 1};
     static inline Setting<int> dpi{"android-dpi", 120};        
     static inline Setting<int> androidMode{"android-resolution", 0};
+    static inline Setting<int> mediaDelay{"android-media-delay", 300};    
+
+
 
     // Application configuration section 
     static inline Setting<int> fontSize{"font-size", 30};
@@ -38,6 +41,7 @@ public:
     static inline Setting<int> audioQueue{"audio-buffer-size", 16};
     static inline Setting<int> audioDelay{"audio-buffer-wait", 2};
     static inline Setting<float> audioFade{"audio-fade", 0.3};
+    static inline Setting<std::string> audioDriver{"audio-driver", ""};
     static inline Setting<std::string> onConnect{"on-connect-script", ""};
     static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};
 
