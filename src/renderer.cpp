@@ -141,20 +141,19 @@ SDL_Rect RendererImage::draw(SDL_Renderer *renderer, int w, int h)
 }
 
 const Renderer::FormatMapping Renderer::_mapping[] = {
-    {AV_PIX_FMT_RGB24, SDL_PIXELFORMAT_RGB24, &Renderer::rgb, &Renderer::crgb, "RGB24", 3},
-    {AV_PIX_FMT_YUV420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, &Renderer::cyuv, "YUV420P", 0},
-    {AV_PIX_FMT_YUVJ420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, &Renderer::cyuv, "YUVJ420P", 0},
-    {AV_PIX_FMT_NV12, SDL_PIXELFORMAT_NV12, &Renderer::nv, &Renderer::cnv, "NV12", 0}};
+    {AV_PIX_FMT_RGB24, SDL_PIXELFORMAT_RGB24, &Renderer::rgb, "RGB24"},
+    {AV_PIX_FMT_YUV420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, "YUV420P"},
+    {AV_PIX_FMT_YUVJ420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, "YUVJ420P"},
+    {AV_PIX_FMT_NV12, SDL_PIXELFORMAT_NV12, &Renderer::nv, "NV12"}};
 
 Renderer::Renderer(SDL_Renderer *renderer)
-    : _renderer(renderer),
+    : xScale(0),
+      yScale(0),
+      _renderer(renderer),
       _texture(nullptr),
       _textureWidth(0),
       _textureHeight(0),
-      _cropX(0),
-      _cropY(0),
-      _crop(false),
-      _bytesPerPixel(0),
+      _sourceRect({0, 0, 0, 0}),
       _render(nullptr),
       _sws(nullptr),
       _frame(nullptr)
@@ -168,25 +167,21 @@ Renderer::~Renderer()
 
 bool Renderer::render(AVFrame *frame)
 {
-    if (_render == nullptr || _texture == nullptr)
-        return false;
+    if (_render == nullptr || frame->width != _textureWidth || frame->height != _textureHeight)
+    {
+        clear();
+        if (!prepare(frame, Settings::width, Settings::height))
+            return false;
+    }
     (this->*_render)(frame);
     SDL_RenderClear(_renderer);
-    SDL_RenderCopy(_renderer, _texture, nullptr, nullptr);
+    SDL_RenderCopy(_renderer, _texture, &_sourceRect, nullptr);
     SDL_RenderPresent(_renderer);
     return true;
 }
 
 bool Renderer::prepareTexture(uint32_t format, int width, int height)
 {
-    if (_texture)
-    {
-        if (_textureWidth == width && _textureHeight == height)
-            return true;
-        SDL_DestroyTexture(_texture);
-        _texture = nullptr;
-    }
-
     _texture = SDL_CreateTexture(_renderer, format,
                                  SDL_TEXTUREACCESS_STREAMING,
                                  width, height);
@@ -195,6 +190,9 @@ bool Renderer::prepareTexture(uint32_t format, int width, int height)
         std::cerr << "[UX] SDL can't create video texture: " << SDL_GetError() << std::endl;
         return false;
     }
+
+    _textureWidth = width;
+    _textureHeight = height;
     return true;
 }
 
@@ -217,62 +215,44 @@ void Renderer::clear()
     }
 }
 
-bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight, uint32_t scaler, bool android, float *cropX, float *cropY)
+bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight)
 {
-    clear();
-    std::cout << "[UX] Prepare renderer " << targetWidth << "x" << targetHeight << " for source " << frame->width << "x" << frame->height << " " << (android ? "android auto" : "carplay") << std::endl;
     if (targetWidth == 0 || targetHeight == 0)
         return false;
 
-    bool scaled = frame->height * targetWidth == targetHeight * frame->width;
-    int width = frame->width;
-    int height = frame->height;
+    float scale = (float)frame->width / targetWidth;
+    float scale2 = (float)frame->height / targetHeight;
+    if (scale > scale2)
+        scale = scale2;
+    int width = targetWidth * scale;
+    int height = targetHeight * scale;
 
-    if (android && !scaled)
+    _sourceRect = {(frame->width - width) / 2, (frame->height - height) / 2, width, height};
+    xScale = (float)width / frame->width;
+    yScale = (float)height / frame->height;
+
+    std::cout << "[UX] Prepare renderer " << width << "x" << height << " for source " << frame->width << "x" << frame->height << " target " << targetWidth << "x" << targetHeight << std::endl;
+
+    AVPixelFormat fmt = static_cast<AVPixelFormat>(frame->format);
+    for (const FormatMapping &mapping : _mapping)
     {
-        float scale = (float)frame->width / targetWidth;
-        float scale2 = (float)frame->height / targetHeight;
-        if (scale > scale2)
-            scale = scale2;
-        width = targetWidth * scale;
-        height = targetHeight * scale;
-    }
-
-    bool cropW = android && width != frame->width;
-    bool cropH = android && height != frame->height;
-    _cropX = cropW ? (frame->width - width) / 2 : 0;
-    _cropY = cropH ? (frame->height - height) / 2 : 0;
-    *cropX = cropW ? (float)width / frame->width : 1;
-    *cropY = cropH ? (float)height / frame->height : 1;
-
-    if (scaled || cropW || cropH)
-    {
-        AVPixelFormat fmt = static_cast<AVPixelFormat>(frame->format);
-        for (const FormatMapping &mapping : _mapping)
+        if (mapping.avFormat == fmt)
         {
-            if (mapping.avFormat == fmt)
+            if (prepareTexture(mapping.sdlFormat, frame->width, frame->height))
             {
-                if (prepareTexture(mapping.sdlFormat, width, height))
-                {
-                    std::cout << "[UX] Direct rendering " << mapping.name << std::endl;
-                    _render = (cropW || cropH) ? mapping.functionCrop : mapping.function;
-                    _bytesPerPixel = mapping.bpp;
-                    return true;
-                }
+                std::cout << "[UX] Direct rendering " << mapping.name << std::endl;
+                _render = mapping.function;
+                return true;
             }
         }
     }
-    else
-    {
-        std::cout << "[UX] Scaling required from " << frame->width << "x" << frame->height << " to " << targetWidth << "x" << targetHeight << std::endl;
-    }
 
-    if (!prepareTexture(SDL_PIXELFORMAT_IYUV, width, height))
+    if (!prepareTexture(SDL_PIXELFORMAT_IYUV, frame->width, frame->height))
         return false;
 
     _sws = sws_getContext(frame->width, frame->height, (AVPixelFormat)frame->format,
-                          width, height, AV_PIX_FMT_YUV420P,
-                          scaler, nullptr, nullptr, nullptr);
+                          frame->width, frame->height, AV_PIX_FMT_YUV420P,
+                          SWS_BILINEAR, nullptr, nullptr, nullptr);
     if (!_sws)
     {
         std::cerr << "[UX] Can't create sws context" << std::endl;
@@ -286,8 +266,8 @@ bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight, uint32
         return false;
     }
     _frame->format = AV_PIX_FMT_YUV420P;
-    _frame->width = width;
-    _frame->height = height;
+    _frame->width = frame->width;
+    _frame->height = frame->height;
     // Allocate data buffer with 32 byte allingment
     int avRes = av_frame_get_buffer(_frame, 32);
     if (avRes != 0)
@@ -309,15 +289,6 @@ void Renderer::rgb(AVFrame *frame)
         frame->data[0], frame->linesize[0]);
 }
 
-void Renderer::crgb(AVFrame *frame)
-{
-    uint8_t *rgb_data = frame->data[0] + _cropY * frame->linesize[0] + _cropX * _bytesPerPixel;
-    SDL_UpdateTexture(
-        _texture,
-        nullptr,
-        rgb_data, frame->linesize[0]);
-}
-
 void Renderer::nv(AVFrame *frame)
 {
     SDL_UpdateNVTexture(
@@ -325,20 +296,6 @@ void Renderer::nv(AVFrame *frame)
         nullptr,
         frame->data[0], frame->linesize[0],
         frame->data[1], frame->linesize[1]);
-}
-
-void Renderer::cnv(AVFrame *frame)
-{
-    uint8_t *y_plane = frame->data[0] + _cropY * frame->linesize[0] + _cropX;
-
-    // UV plane (subsampled by 2)
-    uint8_t *uv_plane = frame->data[1] + (_cropY / 2) * frame->linesize[1] + 2 * (_cropX / 2);
-
-    SDL_UpdateNVTexture(
-        _texture,
-        nullptr,
-        y_plane, frame->linesize[0],
-        uv_plane, frame->linesize[1]);
 }
 
 void Renderer::yuv(AVFrame *frame)
@@ -351,42 +308,19 @@ void Renderer::yuv(AVFrame *frame)
         frame->data[2], frame->linesize[2]);
 }
 
-void Renderer::cyuv(AVFrame *frame)
-{
-
-    int crop_x_chroma = _cropX / 2;
-    int crop_y_chroma = _cropY / 2;
-    uint8_t *y_plane = frame->data[0] + _cropY * frame->linesize[0] + _cropX;
-    uint8_t *u_plane = frame->data[1] + crop_y_chroma * frame->linesize[1] + crop_x_chroma;
-    uint8_t *v_plane = frame->data[2] + crop_y_chroma * frame->linesize[2] + crop_x_chroma;
-    SDL_UpdateYUVTexture(
-        _texture,
-        nullptr,
-        y_plane, frame->linesize[0],
-        u_plane, frame->linesize[1],
-        v_plane, frame->linesize[2]);
-}
-
 void Renderer::scale(AVFrame *frame)
 {
     // Scale frame to output format
     sws_scale(_sws,
               frame->data, frame->linesize,
-              0, _textureHeight,
+              0, _frame->height,
               _frame->data,
               _frame->linesize);
 
-    yuv(_frame);
-}
-
-void Renderer::cscale(AVFrame *frame)
-{
-    // Scale frame to output format
-    sws_scale(_sws,
-              frame->data, frame->linesize,
-              0, _textureHeight,
-              _frame->data,
-              _frame->linesize);
-
-    cyuv(_frame);
+    SDL_UpdateYUVTexture(
+        _texture,
+        nullptr,
+        _frame->data[0], _frame->linesize[0],
+        _frame->data[1], _frame->linesize[1],
+        _frame->data[2], _frame->linesize[2]);
 }

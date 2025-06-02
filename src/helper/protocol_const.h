@@ -3,8 +3,8 @@
 
 #define PROTOCOL_STATUS_INITIALISING 0 // Initialised > 1
 #define PROTOCOL_STATUS_NO_DEVICE 1    // Start linking > 3
-#define PROTOCOL_STATUS_ERROR 2        // Linked > 4, no device in sequence > 1
-#define PROTOCOL_STATUS_LINKING 3      // Linked > 4, Failed in sequence > 2
+#define PROTOCOL_STATUS_LINKING 2      // Linked > 4, Failed in sequence > 3
+#define PROTOCOL_STATUS_ERROR 3        // Linked > 4, no device in sequence > 1
 #define PROTOCOL_STATUS_ONLINE 4       // Phone connected > 5, no device > 1
 #define PROTOCOL_STATUS_CONNECTED 5    // Phone disconnected > 4, no device > 1
 

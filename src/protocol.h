@@ -34,7 +34,6 @@ public:
     AtomicQueue<Message> audioStreamMain;
     AtomicQueue<Message> audioStreamAux;
     bool phoneConnected;
-    bool phoneAndroid;
 
 private:
     void sendInt(uint32_t cmd, uint32_t value, bool encryption = true);
@@ -54,7 +53,6 @@ private:
     uint16_t _width;
     uint16_t _height;
     uint16_t _fps;
-    bool _phoneInfo;
 
     uint32_t _evtStatusId = (uint32_t)-1;
     uint32_t _evtPhoneId = (uint32_t)-1;

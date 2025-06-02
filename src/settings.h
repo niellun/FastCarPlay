@@ -33,7 +33,6 @@ public:
     static inline Setting<int> fontSize{"font-size", 30};
     static inline Setting<bool> vsync{"vsync", false};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
-    static inline Setting<int> scaler{"scaler", 2};
     static inline Setting<bool> fastScale{"fast-render-scale", false};
     static inline Setting<int> videoQueue{"video-buffer-size", 32};
     static inline Setting<int> audioQueue{"audio-buffer-size", 16};

@@ -12,11 +12,9 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t paddi
       audioStreamMain(Settings::audioQueue),
       audioStreamAux(Settings::audioQueue),
       phoneConnected(false),
-      phoneAndroid(false),
       _width(width),
       _height(height),
-      _fps(fps),
-      _phoneInfo(false)
+      _fps(fps)
 {
 }
 
@@ -65,18 +63,32 @@ void Protocol::sendConfig()
     if (Settings::micType == 3)
         mic = 21;
 
-    float aspect = (float)_width / _height;
-    int height = 480;
-    if (Settings::androidMode == 2)
-        height = 1280;
-    if (Settings::androidMode == 3)
-        height = 1920;
-    int width = aspect*height;
-    if (aspect < 1)
+    int width;
+    int height;
+    switch (Settings::androidMode)
     {
-        width = height;
-        height = height/aspect;
+    default:
+        width = 800;
+        height = 480;
+        break;
+    case 2:
+        width = 1280;
+        height = 720;
+        break;
+    case 3:
+        width = 1920;
+        height = 1080;
+        break;
     }
+
+    if (_width < _height)
+        std::swap(width, height);
+
+    float scale = std::min((float)width / _width, (float)height / _height);
+    width = _width * scale;
+    height = _height * scale;
+
+    std::cout << "[Protocol] Request android image " << width << "x" << height << std::endl;
 
     char buffer[512];
     snprintf(buffer, sizeof(buffer),
@@ -206,42 +218,6 @@ void Protocol::sendEncryption()
     connector.send(CMD_ENCRYPTION, false, buf, 4);
 }
 
-bool Protocol::jsonFind(const char *json, uint16_t length, const char *key, char *value, uint16_t size) const
-{
-    size_t key_len = std::strlen(key);
-    const char *end = json + length;
-    const char *p = json;
-
-    while (p < end - key_len - 3)
-    {
-        if (*p == '"' && *(p + 1 + key_len) == '"' && std::memcmp(p + 1, key, key_len) == 0)
-        {
-            const char *colon = p + 1 + key_len + 1;
-            while (colon < end && *colon == ' ')
-                ++colon;
-            if (colon >= end || *colon != ':')
-                return false;
-
-            const char *val_start = colon + 1;
-            while (val_start < end && (*val_start == ' ' || *val_start == '"'))
-                ++val_start;
-
-            const char *val_end = val_start;
-            while (val_end < end && *val_end != ',' && *val_end != '}' && *val_end != '"')
-                ++val_end;
-
-            uint16_t val_len = val_end - val_start;
-            if (val_len + 1 > size)
-                return false;
-            std::memcpy(value, val_start, val_len);
-            value[val_len] = '\0';
-            return true;
-        }
-        ++p;
-    }
-    return false;
-}
-
 void Protocol::onStatus(uint8_t status)
 {
     pushEvent(_evtStatusId, status);
@@ -288,26 +264,12 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
     bool dispose = true;
     switch (cmd)
     {
-    case CMD_JSON_CONTROL:
-        if (!_phoneInfo)
-        {
-            char res[32];
-            if (jsonFind((char *)data, length, "MDLinkType", res, 32))
-            {
-                _phoneInfo = true;
-                phoneAndroid = strncmp(res, "AndroidAuto", 11) == 0;
-            }
-        }
-        break;
-
     case CMD_PLUGGED:
         onPhone(true);
         break;
 
     case CMD_UNPLUGGED:
         onPhone(false);
-        _phoneInfo = false;
-        phoneAndroid = false;
         break;
 
     case CMD_VIDEO_DATA:

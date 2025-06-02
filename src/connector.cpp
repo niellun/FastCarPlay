@@ -140,36 +140,28 @@ bool Connector::nextState(u_int8_t state)
     if (state == _state)
         return false;
 
-    if (state > _state)
+    if (state == PROTOCOL_STATUS_ERROR && _failCount++ < 10)
+    {
+        _failCount++;
+        return false;
+    }
+
+    if (state > _state || state == PROTOCOL_STATUS_INITIALISING)
     {
         _nodeviceCount = 0;
         _failCount = 0;
         _state = state;
         return true;
     }
-
-    switch (state)
+    
+    if (state == PROTOCOL_STATUS_NO_DEVICE && (_nodeviceCount++ > 10 || _state >= PROTOCOL_STATUS_ONLINE))
     {
-    case PROTOCOL_STATUS_INITIALISING:
-        break;
-
-    case PROTOCOL_STATUS_ERROR:
-        _nodeviceCount = 0;
-        if (_failCount++ < 10)
-            return false;
-        break;
-
-    case PROTOCOL_STATUS_NO_DEVICE:
-        if (_nodeviceCount++ < 10 && _state < PROTOCOL_STATUS_ONLINE)
-            return false;
-        break;
-
-    default:
-        return false;
+        _failCount = 0;
+        _state = state;
+        return true;
     }
 
-    _state = state;
-    return true;
+    return false;
 }
 
 void Connector::state(u_int8_t state)

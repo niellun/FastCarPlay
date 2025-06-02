@@ -24,6 +24,7 @@ public:
 
     void start(AtomicQueue<Message> *data, VideoBuffer *vb,  AVCodecID codecId);
     void stop();
+    void flush();
 
 private:
     void runner();
@@ -31,6 +32,7 @@ private:
     static AVCodecContext *load_codec(AVCodecID codec_id);
 
     std::thread _thread;
+    AVCodecContext* _context; 
     AVCodecID _codecId;
     Error _status;
 

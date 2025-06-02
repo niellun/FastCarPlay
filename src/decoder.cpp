@@ -5,6 +5,7 @@
 #include "settings.h"
 
 Decoder::Decoder()
+    : _context(nullptr)
 {
 }
 
@@ -32,6 +33,12 @@ void Decoder::stop()
     _data->notify();
     if (_thread.joinable())
         _thread.join();
+}
+
+void Decoder::flush()
+{
+    if(_context)
+        avcodec_flush_buffers(_context);
 }
 
 // Initialize and select the best decoder (try HW first, then SW)
@@ -100,10 +107,10 @@ void Decoder::runner()
     setThreadName("video-decoding");
 
     // Load codec context
-    AVCodecContext *context = load_codec(_codecId);
-    if (_status.null(context, ("Can't find decoder for codec " + _codecId)))
+    _context = load_codec(_codecId);
+    if (_status.null(_context, ("Can't find decoder for codec " + _codecId)))
         return;
-    std::string codec = context->codec->name;
+    std::string codec = _context->codec->name;
 
     // Initialize parser for the codec
     AVCodecParserContext *parser = av_parser_init(_codecId);
@@ -117,14 +124,15 @@ void Decoder::runner()
             AVFrame *frame = av_frame_alloc();
             if (!_status.null(frame, "Can't allocate frame for codec " + codec))
             {
-                loop(context, parser, packet, frame); // Run decoding loop
+                loop(_context, parser, packet, frame); // Run decoding loop
                 av_frame_free(&frame);
             }
             av_packet_free(&packet);
         }
         av_parser_close(parser);
     }
-    avcodec_free_context(&context);
+    avcodec_free_context(&_context);
+    _context = nullptr;
 
     if (_status.error())
         std::cout << "[Video] Decoder error: " << _status.message() << std::endl;
@@ -148,8 +156,6 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
         {
             uint8_t *paket_data;
             int paket_size;
-
-            // printf("avparser offset %d size %d fullsize %d\n", data_ptr-segment.data, data_size, segment.size);
 
             // Parse raw data into packets
             int len = av_parser_parse2(parser, context,

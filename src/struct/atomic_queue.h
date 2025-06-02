@@ -68,7 +68,7 @@ public:
         return item;
     }
 
-    bool wait(atomic<bool> &waitFlag, int count = 0)
+    bool wait(atomic<bool> &waitFlag, uint8_t count = 0)
     {
         unique_lock<std::mutex> lock(_mtx);
 
