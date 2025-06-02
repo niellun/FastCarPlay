@@ -68,6 +68,11 @@ public:
         return item;
     }
 
+    bool has(uint8_t count)
+    {
+        return _count >= count;
+    }
+
     bool wait(atomic<bool> &waitFlag, uint8_t count = 0)
     {
         unique_lock<std::mutex> lock(_mtx);

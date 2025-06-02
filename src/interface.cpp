@@ -1,7 +1,7 @@
 #include "interface.h"
 #include "resource/background.h"
 #include "resource/font.h"
-#include "resource/colors.h"
+#include "resource/colours.h"
 #include "settings.h"
 #include "helper/protocol_const.h"
 #include <iostream>

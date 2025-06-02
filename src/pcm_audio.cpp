@@ -24,6 +24,8 @@ PcmAudio::PcmAudio(const char *name)
     _faded = false;
     _volume = 1.0;
     _fadeVolume = Settings::audioFade;
+    _config.channels = 0;
+    _config.rate = 0;
     if (_fadeVolume < 0)
         _fadeVolume = 0;
     if (_fadeVolume > 1)
@@ -64,17 +66,31 @@ void PcmAudio::callback(void *userdata, Uint8 *stream, int len)
     PcmAudio *self = static_cast<PcmAudio *>(userdata);
     const Message *segment = self->_data->peek();
     if (segment && self->_offset == 0 && getConfig(segment->getInt(OFFSET_AUDIO_FORMAT)) != self->_config)
-    {
         self->_reconfig = true;
-        self->_cv.notify_one();
+
+    bool underflow;
+    if (self->_data->has(self->_underflowSize))
+    {
+        underflow = false;
+        self->_underflowCount = 0;
     }
+    else
+    {
+        underflow = true;
+    }
+
     while (len > 0)
     {
-        if (segment == nullptr || self->_reconfig)
+        if (segment == nullptr || self->_reconfig || underflow)
         {
             std::fill_n(stream, len, 0);
             self->_faded = self->_fade;
             self->_volume = self->_faded ? Settings::audioFade : 1;
+            if (underflow && self->_underflowCount++ < 20)
+            {
+                self->_data->clear();
+                return;
+            }
             self->_reconfig = true;
             self->_cv.notify_one();
             return;
@@ -155,33 +171,40 @@ void PcmAudio::runner()
         if (!segment)
             continue;
 
-        _config = getConfig(segment->getInt(OFFSET_AUDIO_FORMAT));
-        if (device != 0)
+        ChannelConfig config = getConfig(segment->getInt(OFFSET_AUDIO_FORMAT));
+        if (_config != config)
         {
-            SDL_PauseAudioDevice(device, 1);
-            SDL_CloseAudioDevice(device);
-            device = 0;
+            if (device != 0)
+            {
+                SDL_PauseAudioDevice(device, 1);
+                SDL_CloseAudioDevice(device);
+                device = 0;
+            }
+
+            // Configure new spec
+            SDL_zero(spec);
+            spec.freq = config.rate;
+            spec.format = AUDIO_S16SYS;
+            spec.channels = config.channels;
+            spec.samples = 4096;
+            spec.callback = callback;
+            spec.userdata = this;
+
+            device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
+            if (device == 0)
+            {
+                std::cerr << _name << " Failed to open audio: " << SDL_GetError() << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+            _config = config;
         }
 
-        // Configure new spec
-        SDL_zero(spec);
-        spec.freq = _config.rate;
-        spec.format = AUDIO_S16SYS;
-        spec.channels = _config.channels;
-        spec.samples = 4096;
-        spec.callback = callback;
-        spec.userdata = this;
-
-        _reconfig = false;
         _offset = 0;
+        _reconfig = false;
+        _underflowCount = 0;
+        _underflowSize = spec.channels == 1 ? Settings::audioDelayCall : Settings::audioDelay;
 
-        device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
-        if (device == 0)
-        {
-            std::cerr << _name << " Failed to open audio: " << SDL_GetError() << std::endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            continue;
-        }
         SDL_PauseAudioDevice(device, 0);
         std::cout << _name << " Start playing " << _config.rate << "kHz " << (_config.channels == 2 ? "stereo" : "mono") << std::endl;
         if (_fader)

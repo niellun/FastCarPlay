@@ -23,7 +23,7 @@ extern "C"
 
 #define FRAME_DELAY_INACTIVE 200
 
-static const char *title = "Fast Car Play v0.4";
+static const char *title = "Fast Car Play v0.5";
 static SDL_Window *window = nullptr;
 static SDL_Renderer *renderer = nullptr;
 Uint32 evtStatus = (Uint32)-1;

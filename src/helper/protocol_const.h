@@ -35,6 +35,9 @@
 #define CMD_VERSION 204
 #define CMD_ENCRYPTION 240
 
+#define AUDIO_BUFFER_SIZE 2560
+#define AUDIO_BUFFER_OFFSET 12
+
 struct ProtocolCmdEntry
 {
     int cmd;

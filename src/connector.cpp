@@ -29,7 +29,10 @@ Connector::Connector(uint16_t videoPadding)
 
 Connector::~Connector()
 {
-    stop();
+    _active = false;
+
+    if (_write_thread.joinable())
+        _write_thread.join();    
 
     if (_cipher)
     {

@@ -58,6 +58,8 @@ private:
     bool _faded;
     float _volume;
     float _fadeVolume;
+    int _underflowCount;
+    int _underflowSize;
 
     std::thread _thread;
     std::mutex _mtx;

@@ -11,11 +11,11 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t paddi
       videoData(Settings::videoQueue),
       audioStreamMain(Settings::audioQueue),
       audioStreamAux(Settings::audioQueue),
+      _recorder(Settings::audioQueue),
       _width(width),
       _height(height),
       _fps(fps),
       _phoneConnected(false)
-
 {
 }
 
@@ -163,6 +163,14 @@ void Protocol::sendMove(float dx, float dy)
     send(CMD_TOUCH, false, buf, 16);
 }
 
+void Protocol::sendAudio(uint8_t *data, uint32_t length)
+{
+    write_uint32_le(data, 5);
+    write_uint32_le(data + 4, 0);
+    write_uint32_le(data + 8, 3);
+    send(CMD_AUDIO_DATA, false, data, length);
+}
+
 void Protocol::sendFile(const char *filename, const uint8_t *data, uint32_t length)
 {
     // filename is assumed null‑terminated, so strlen + 1 to include the '\0'
@@ -248,6 +256,9 @@ void Protocol::onPhone(bool connected)
 
     std::cout << (connected ? "[Protocol] Phone connected" : "[Protocol] Phone disconnected") << std::endl;
 
+    if (!connected)
+        _recorder.stop();
+
     pushEvent(_evtPhoneId, connected ? 1 : 0);
 
     if (connected && Settings::onConnect.value.length() > 1)
@@ -257,11 +268,36 @@ void Protocol::onPhone(bool connected)
         execute(Settings::onDisconnect.value.c_str());
 }
 
+void Protocol::onControl(int cmd)
+{
+    switch (cmd)
+    {
+    case 1:
+        _recorder.start(this);
+        break;
+
+    case 2:
+        _recorder.stop();
+        break;
+    }
+}
+
 void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
 {
     bool dispose = true;
     switch (cmd)
     {
+
+    case CMD_CONTROL:
+        if (length == 4)
+        {
+            int cmd = 0;
+            memcpy(&cmd, data, sizeof(int));
+            onControl(cmd);
+        }
+
+        break;
+
     case CMD_PLUGGED:
         onPhone(true);
         break;

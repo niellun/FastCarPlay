@@ -98,11 +98,12 @@
 
 # Size of video and audio buffers. Increase if you see artifacts
 #video-buffer-size = 32
-#audio-buffer-size = 16
+#audio-buffer-size = 32
 
-# Audio delay. Fill the buffer to this value before start playing. Increase if you hear audio artifacts.
-# Should be less than audio-buffer-size 
+# Audio delay for music and calls. Fill the buffer to this value before start playing. 
+# Increase if you hear audio artifacts or tearing. Should be less than audio-buffer-size 
 #audio-buffer-wait = 2
+#audio-buffer-wait-call = 8
 
 # Reduce volume of main audio source when there is higher priority audio stream.
 # This will reduce volume of the music if there is navigation instructions
