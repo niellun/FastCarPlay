@@ -41,6 +41,12 @@ PcmAudio::~PcmAudio()
 
 void PcmAudio::fadecpy(uint8_t *target, uint8_t *source, size_t len)
 {
+    if (!_fade && !_faded)
+    {
+        std::memcpy(target, source, len);
+        return;
+    }
+
     int16_t *src = reinterpret_cast<int16_t *>(source);
     int16_t *dst = reinterpret_cast<int16_t *>(target);
     _faded = true;
@@ -66,32 +72,41 @@ void PcmAudio::callback(void *userdata, Uint8 *stream, int len)
     PcmAudio *self = static_cast<PcmAudio *>(userdata);
     const Message *segment = self->_data->peek();
     if (segment && self->_offset == 0 && getConfig(segment->getInt(OFFSET_AUDIO_FORMAT)) != self->_config)
-        self->_reconfig = true;
-
-    bool underflow;
-    if (self->_data->has(self->_underflowSize))
     {
-        underflow = false;
-        self->_underflowCount = 0;
+        self->_paused = true;
+        self->_cv.notify_one();
     }
-    else
+
+    if (self->_underflow)
     {
-        underflow = true;
+        int count = self->_data->count();
+        if (count > self->_prefill)
+            self->_underflow = false;
+        else if (count == self->_lastCount)
+            self->_underflowCount++;
+        else
+            self->_lastCount = count;
     }
 
     while (len > 0)
     {
-        if (segment == nullptr || self->_reconfig || underflow)
+        if(segment == nullptr && !self->_underflow)
+        {
+            if (self->_fader)
+                self->_fader->Fade(false);
+            self->_underflowCount = 0;
+            self->_underflow = true;
+        }
+
+        if (self->_underflow)
         {
             std::fill_n(stream, len, 0);
             self->_faded = self->_fade;
             self->_volume = self->_faded ? Settings::audioFade : 1;
-            if (underflow && self->_underflowCount++ < 20)
-            {
-                self->_data->clear();
+            if (self->_underflowCount < BUFFER_WAIT_COUNT)
                 return;
-            }
-            self->_reconfig = true;
+            self->_data->clear();
+            self->_paused = true;
             self->_cv.notify_one();
             return;
         }
@@ -101,19 +116,12 @@ void PcmAudio::callback(void *userdata, Uint8 *stream, int len)
 
         if (remain > len)
         {
-            if (self->_fade || self->_faded)
-                self->fadecpy(stream, data, len);
-            else
-                std::memcpy(stream, data, len);
+            self->fadecpy(stream, data, len);
             self->_offset = self->_offset + len;
             return;
         }
 
-        if (self->_fade || self->_faded)
-            self->fadecpy(stream, data, remain);
-        else
-            std::memcpy(stream, data, remain);
-
+        self->fadecpy(stream, data, remain);
         len = len - remain;
         stream = stream + remain;
         self->_data->pop();
@@ -121,7 +129,7 @@ void PcmAudio::callback(void *userdata, Uint8 *stream, int len)
         segment = self->_data->peek();
         if (segment && getConfig(segment->getInt(OFFSET_AUDIO_FORMAT)) != self->_config)
         {
-            self->_reconfig = true;
+            self->_paused = true;
             self->_cv.notify_one();
         }
     }
@@ -201,9 +209,11 @@ void PcmAudio::runner()
         }
 
         _offset = 0;
-        _reconfig = false;
+        _paused = false;
+        _underflow = true;
         _underflowCount = 0;
-        _underflowSize = spec.channels == 1 ? Settings::audioDelayCall : Settings::audioDelay;
+        _lastCount = 0;
+        _prefill = spec.channels == 1 ? Settings::audioDelayCall : Settings::audioDelay;
 
         SDL_PauseAudioDevice(device, 0);
         std::cout << _name << " Start playing " << _config.rate << "kHz " << (_config.channels == 2 ? "stereo" : "mono") << std::endl;
@@ -212,7 +222,7 @@ void PcmAudio::runner()
 
         std::unique_lock<std::mutex> lock(_mtx);
         _cv.wait(lock, [&]
-                 { return _reconfig.load() || !_active.load(); });
+                 { return _paused.load() || !_active.load(); });
 
         SDL_PauseAudioDevice(device, 1);
         std::cout << _name << " Stop playing" << std::endl;

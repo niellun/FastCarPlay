@@ -12,6 +12,7 @@
 
 #define FADE_IN_SPEED 0.00001
 #define FADE_OUT_SPEED 0.0001
+#define BUFFER_WAIT_COUNT 5
 
 struct ChannelConfig
 {
@@ -58,13 +59,15 @@ private:
     bool _faded;
     float _volume;
     float _fadeVolume;
+    bool _underflow;
     int _underflowCount;
-    int _underflowSize;
+    int _lastCount;
+    int _prefill;
 
     std::thread _thread;
     std::mutex _mtx;
     std::condition_variable _cv;
-    std::atomic<bool> _reconfig{false};
+    std::atomic<bool> _paused{false};
     std::atomic<bool> _active{false};
     std::string _name;
 };
