@@ -47,7 +47,7 @@ The project is using make. You can edit ./conf/settings.txt after copy if needed
 make clean
 make release
 mkdir ./conf
-cp ./settings.txt /conf
+cp ./settings.txt ./conf
 ./out/app ./conf/settings.txt
 ```
 

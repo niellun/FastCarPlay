@@ -134,6 +134,14 @@
 #on-connect-script = 
 #on-disconnect-script = 
 
+# Map extra keys for control with there codes
+# If you set logging true you and press keys you will see there codes in logs
+#key-left = 0
+#key-right = 0
+#key-enter = 0
+#key-back = 0
+#key-home = 0
+
 ##############################################################################
 # 4.Debug
 ##############################################################################

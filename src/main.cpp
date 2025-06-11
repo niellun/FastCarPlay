@@ -51,32 +51,60 @@ void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
         params.fullscreen = !params.fullscreen; // Toggle fullscreen mode
         SDL_SetWindowFullscreen(window, params.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
         SDL_SetWindowBordered(window, params.fullscreen ? SDL_FALSE : SDL_TRUE);
-        break;
+        return;
 
     case SDLK_q:
         active = false;
-        break;
+        return;
 
     case SDLK_r:
         params.dirty = true;
-        break;
+        return;
 
     case SDLK_LEFT:
-        protocol.sendKey(100);
-        break;
+        protocol.sendKey(BTN_LEFT);
+        return;
 
     case SDLK_RIGHT:
-        protocol.sendKey(101);
-        break;
+        protocol.sendKey(BTN_RIGHT);
+        return;
 
     case SDLK_RETURN:
-        protocol.sendKey(104);
-        protocol.sendKey(105);
-        break;
+        protocol.sendKey(BTN_SELECT_DOWN);
+        protocol.sendKey(BTN_SELECT_UP);
+        return;
 
     case SDLK_BACKSPACE:
-        protocol.sendKey(106);
-        break;
+        protocol.sendKey(BTN_BACK);
+        return;
+
+    case 0:
+        return;
+    }
+
+    if (key.sym == Settings::keyLeft)
+    {
+        protocol.sendKey(BTN_LEFT);
+    }
+    else if (key.sym == Settings::keyRight)
+    {
+        protocol.sendKey(BTN_RIGHT);
+    }
+    else if (key.sym == Settings::keyEnter)
+    {
+        protocol.sendKey(BTN_SELECT_DOWN);
+        protocol.sendKey(BTN_SELECT_UP);
+    }
+    else if (key.sym == Settings::keyBack)
+    {
+        protocol.sendKey(BTN_BACK);
+    }
+    else if (key.sym == Settings::keyHome)
+    {
+        protocol.sendKey(BTN_HOME);
+    } else 
+    {
+        std::cout << "[Key] Unmapped key " << key.sym << std::endl;
     }
 }
 
