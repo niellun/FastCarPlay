@@ -90,6 +90,11 @@
 # Enable vsync. This reduce tearing but can dramatically affect performance on low end systems 
 #vsync = false
 
+# Prefer HW decoding.
+# If you have input lag that means that your hardware decoder can't work in streaming mode
+# This is happening or Raspberry Pi Zero 2W. Disable this to use SW decoding for that case.
+#hw-decode = true
+
 # Corrects aspect of UI
 #aspect-correction = 1
 
@@ -154,3 +159,11 @@
 # 3 - include outgoing commands
 # 4 - log everything
 # protocol-debug = 0
+
+# Enable FFMPEG AV_CODEC_FLAG_LOW_DELAY for HW decoder.
+# Force low delay.
+#decode-low-delay = true
+
+# Enable FFMPEG AV_CODEC_FLAG2_FAST for HW decoder.
+# Allow non spec compliant speedup tricks.
+#decode-fast = false

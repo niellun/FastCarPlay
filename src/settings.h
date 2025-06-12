@@ -33,6 +33,7 @@ public:
     // Application configuration section
     static inline Setting<int> fontSize{"font-size", 30};
     static inline Setting<bool> vsync{"vsync", false};
+    static inline Setting<bool> hwDecode{"hw-decode", true};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<bool> fastScale{"fast-render-scale", false};
     static inline Setting<int> videoQueue{"video-buffer-size", 32};
@@ -51,6 +52,12 @@ public:
 
     // Debug section
     static inline Setting<int> protocolDebug{"protocol-debug", 0};
+    static inline Setting<float> codecLowDelay{"decode-low-delay", true};
+    static inline Setting<float> codecFast{"decode-fast", false};
+
+
+
+
 
     static void load(const std::string &filename);
     static void print();

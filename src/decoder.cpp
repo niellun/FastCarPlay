@@ -49,7 +49,7 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
     AVCodecContext *result = nullptr;
 
     // Try hardware-accelerated decoders by iterating registered codecs
-    while ((codec = av_codec_iterate(&iter)))
+    while ((codec = av_codec_iterate(&iter)) && Settings::hwDecode)
     {
         if (!av_codec_is_decoder(codec) || codec->id != codec_id)
             continue;
@@ -63,14 +63,21 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
             break;
         }
 
+        if(Settings::codecLowDelay)
+            result->flags |= AV_CODEC_FLAG_LOW_DELAY;
+        if(Settings::codecFast)
+            result->flags2 |= AV_CODEC_FLAG2_FAST;
+
         int ret = avcodec_open2(result, codec, nullptr);
         if (ret == 0)
         {
             std::cout << "[Video] Using HW decoder: " << codec->name << std::endl;
+            if (result->codec->capabilities & AV_CODEC_CAP_DELAY)
+                std::cout << "[Video] Codec has AV_CODEC_CAP_DELAY and can introduce lags, consider use SW decoding" << std::endl;
             return result;
         }
 
-        std::cout << "[Video] Can't load HW codec " << codec->name << ": " << avErrorText(ret) << std::endl;
+        std::cout << "[Video] Can't load HW decoder " << codec->name << ": " << avErrorText(ret) << std::endl;
         avcodec_free_context(&result);
     }
 
@@ -78,7 +85,7 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
     codec = avcodec_find_decoder(codec_id);
     if (!codec)
     {
-        std::cout << "[Video] Decoder not found for codec id " << codec_id << std::endl;
+        std::cout << "[Video] HW decoder not found for codec id " << codec_id << std::endl;
         return nullptr;
     }
 
@@ -92,7 +99,7 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
     int ret = avcodec_open2(result, codec, nullptr);
     if (ret < 0)
     {
-        std::cout << "[Video] Failed to open software decoder " << codec->name << ": " << avErrorText(ret) << std::endl;
+        std::cout << "[Video] Failed to open SW decoder " << codec->name << ": " << avErrorText(ret) << std::endl;
         avcodec_free_context(&result);
         return nullptr;
     }
