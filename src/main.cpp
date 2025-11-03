@@ -20,6 +20,7 @@ extern "C"
 #include "decoder.h"
 #include "pcm_audio.h"
 #include "interface.h"
+#include "pipe_listener.h"
 
 #define FRAME_DELAY_INACTIVE 200
 
@@ -102,7 +103,8 @@ void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
     else if (key.sym == Settings::keyHome)
     {
         protocol.sendKey(BTN_HOME);
-    } else 
+    }
+    else
     {
         std::cout << "[Key] Unmapped key " << key.sym << std::endl;
     }
@@ -228,6 +230,7 @@ void application()
     audioAux.start(&protocol.audioStreamAux, &audioMain);
     protocol.start(evtStatus, evtConnected);
     Interface interface(renderer);
+    PipeListener pipeListener(protocol, (Settings::keyPipe.value.length() > 2) ? Settings::keyPipe.value.c_str() : nullptr);
 
     std::cout << "[Main] Loop" << std::endl;
     uint32_t latestid = 0;

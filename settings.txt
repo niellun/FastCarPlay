@@ -147,6 +147,18 @@
 #key-back = 0
 #key-home = 0
 
+# Path for named pipe that keys are going to be listen on to.
+# If empty pipe listening is disables.
+# Example /tmp/fastcarplay_pipe
+# Keys are bytes and defined directly as in protocol, examples:
+# BTN_LEFT 100
+# BTN_RIGHT 101
+# BTN_SELECT_DOWN 104
+# BTN_SELECT_UP 105
+# BTN_BACK 106
+# BTN_HOME 200
+#key-pipe-path = 
+
 ##############################################################################
 # 4.Debug
 ##############################################################################

@@ -49,6 +49,8 @@ public:
     static inline Setting<int> keyEnter{"key-enter", 0};
     static inline Setting<int> keyBack{"key-back", 0};
     static inline Setting<int> keyHome{"key-home", 0};
+    static inline Setting<std::string> keyPipe{"key-pipe-path", ""};
+
 
     // Debug section
     static inline Setting<int> protocolDebug{"protocol-debug", 0};
