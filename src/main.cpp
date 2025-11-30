@@ -355,6 +355,9 @@ int start()
         return 1;
     }
 
+    if(!Settings::cursor)
+        SDL_ShowCursor(SDL_DISABLE);
+
     // Create accelerated renderer for the window
     renderer = SDL_CreateRenderer(window, -1, (Settings::vsync ? (SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC) : SDL_RENDERER_ACCELERATED));
     if (renderer)

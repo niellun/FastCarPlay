@@ -15,6 +15,7 @@ public:
     static inline Setting<int> sourceFps{"source-fps", 50};
     static inline Setting<int> fps{"fps", 50};
     static inline Setting<bool> fullscreen{"fullscreen", true};
+    static inline Setting<bool> cursor{"cursor", false};
     static inline Setting<bool> logging{"logging", false};
 
     // Device configurations section

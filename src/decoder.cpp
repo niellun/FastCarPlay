@@ -150,7 +150,6 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
     uint32_t counter = 0;
 
     // Main decoding loop; runs until global_quit flag is set
-;
     while (_data->wait(_active))
     {
         // Get raw data segment from queue

@@ -5,7 +5,7 @@ The purpose of the project is to make application lightweight to run on Raspberr
 ![Logo](docs/images/screenshot.png)
 
 ## Dongles
-The dongles are readily available from Amazon or Aliexpress labeled by Carlinkit. They also seems to have official web site https://www.carlinkit.com/.
+The dongles are readily available from Amazon or Aliexpress labeled by Carlinkit or CPC200-CCPM. They also seems to have official web site https://www.carlinkit.com/.
 Devices might have different vendor and product id's. Check your with lsusb and update settings if necessary.
 
 ## Setup

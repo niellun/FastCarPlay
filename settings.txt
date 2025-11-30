@@ -23,6 +23,9 @@
 # Application starts in full screen
 #fullscreen = true
 
+# Show mouse pointer
+#cursor = false
+
 # Enable generic console logging. Can reduce performace
 #logging = false 
 
