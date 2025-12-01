@@ -9,6 +9,11 @@ The dongles are readily available from Amazon or Aliexpress labeled by Carlinkit
 Devices might have different vendor and product id's. Check your with lsusb and update settings if necessary.
 
 ## Setup
+
+> [!IMPORTANT]  
+> For detailed guide on set Raspberry Pi Zero 2W visit [Raspbery Pi Setup WIKI page](../../wiki/Raspbery-Pi-Setup)
+
+
 ### Dependencies
 The project is based on SDL2, FFMPEG, LIBUSB. It use XXD for resource embedding.
 ```
