@@ -4,7 +4,7 @@ import struct
 from smbus2 import SMBus
 
 ADS1115_ADDRESS = 0x48
-FIFO_PATH = "/tmp/myfifo"
+FIFO_PATH = "/tmp/fastcarplay_pipe"
 LONG_PRESS = 20
 fifo_file = None
 

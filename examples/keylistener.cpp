@@ -56,8 +56,9 @@ public:
         {
             for (auto v : voltages)
             {
-                button_id++;
-                if (voltage > v)
+                if (voltage < v)
+                    button_id++;
+                else
                     break;
             }
         }
@@ -119,7 +120,7 @@ void send_key_code(uint8_t i)
 // Callback examples
 void callback0(int button_id, bool long_press)
 {
-    std::cout << "[Channel 0] Button " << button_id << " pressed. Long press: " << long_press << "\n";
+    //std::cout << "[Channel 0] Button " << button_id << " pressed. Long press: " << long_press << "\n";
     if (button_id == 4)
     {
         if (long_press)
@@ -148,7 +149,7 @@ void callback0(int button_id, bool long_press)
 
 void callback1(int button_id, bool long_press)
 {
-    std::cout << "[Channel 1] Button " << button_id << " pressed. Long press: " << long_press << "\n";
+    //std::cout << "[Channel 1] Button " << button_id << " pressed. Long press: " << long_press << "\n";
     if (button_id == 3)
     {
         if (!long_press)
@@ -201,11 +202,16 @@ int main()
 
     constexpr double interval = 1.0 / FREQUENCY;
 
+    std::cout << "Keylistener started with fifo " << FIFO_PATH << "\n";
+
     while (true)
     {
         auto loop_start = std::chrono::steady_clock::now();
         double v0 = read_diff(file_i2c, 0x04);
         double v1 = read_diff(file_i2c, 0x05);
+        //if(v0<voltages[0] || v1<voltages[0])
+        //    std::cout << "Channel 0: " << v0 << " Channel 1: " << v1;
+
         proc0.process_voltage(v0);
         proc1.process_voltage(v1);
         auto loop_end = std::chrono::steady_clock::now();
