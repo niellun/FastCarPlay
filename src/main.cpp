@@ -61,6 +61,17 @@ void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
     case SDLK_r:
         params.dirty = true;
         return;
+    case SDLK_h:
+        protocol.sendKey(BTN_HOME);
+        return;
+
+    case SDLK_s:
+        protocol.sendKey(BTN_SIRI);
+        return;
+
+    case SDLK_m:
+        protocol.sendKey(BTN_MICROPHONE);
+        return;
 
     case SDLK_LEFT:
         protocol.sendKey(BTN_LEFT);
@@ -68,6 +79,26 @@ void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
 
     case SDLK_RIGHT:
         protocol.sendKey(BTN_RIGHT);
+        return;
+
+    case SDLK_DOWN:
+        protocol.sendKey(BTN_DOWN);
+        return;
+
+    case SDLK_SPACE:
+        protocol.sendKey(BTN_PLAY);
+        return;
+
+    case SDLK_p:
+        protocol.sendKey(BTN_PAUSE);
+        return;
+
+    case SDLK_MINUS:
+        protocol.sendKey(BTN_PREVIOUS_TRACK);
+        return;
+
+    case SDLK_EQUALS:
+        protocol.sendKey(BTN_NEXT_TRACK);
         return;
 
     case SDLK_RETURN:

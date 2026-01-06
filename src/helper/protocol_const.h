@@ -24,6 +24,7 @@
 #define CMD_BLUETOOTH_INFO 13
 #define CMD_WIFI_INFO 14
 #define CMD_DEVICE_LIST 18
+#define CMD_MULTI_TOUCH 23
 #define CMD_JSON_CONTROL 25
 #define CMD_MANUFACTURER 20
 #define CMD_UNKNOWN_38 38
@@ -35,12 +36,19 @@
 #define CMD_VERSION 204
 #define CMD_ENCRYPTION 240
 
+#define BTN_SIRI 5
+#define BTN_MICROPHONE 7
 #define BTN_LEFT 100
 #define BTN_RIGHT 101
 #define BTN_SELECT_DOWN 104
 #define BTN_SELECT_UP 105
 #define BTN_BACK 106
+#define BTN_DOWN 114
 #define BTN_HOME 200
+#define BTN_PLAY 201
+#define BTN_PAUSE 202
+#define BTN_NEXT_TRACK 204
+#define BTN_PREVIOUS_TRACK 205
 
 
 #define AUDIO_BUFFER_SIZE 2560
@@ -65,6 +73,7 @@ const ProtocolCmdEntry protocolCmdList[] = {
     {CMD_BLUETOOTH_INFO, "Bluetooth Info"},
     {CMD_WIFI_INFO, "WiFi Info"},
     {CMD_DEVICE_LIST, "Device List"},
+    {CMD_MULTI_TOUCH, "Multi Touch"},
     {CMD_JSON_CONTROL, "Control JSON"},
     {CMD_MANUFACTURER, "Manufacturer"},
     {CMD_MEDIA_INFO, "Media info"},
