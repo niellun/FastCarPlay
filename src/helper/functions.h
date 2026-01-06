@@ -37,6 +37,13 @@ inline void write_uint32_le(uint8_t *dst, uint32_t value)
     dst[3] = (value >> 24) & 0xFF;
 }
 
+inline void write_float_le(uint8_t* dst, float value)
+{
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof(bits));
+    write_uint32_le(dst, bits);
+}
+
 inline void execute(const char *path)
 {
     if (!path || *path == '\0')

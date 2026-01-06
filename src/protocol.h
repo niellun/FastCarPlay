@@ -18,6 +18,20 @@ public:
     Protocol(const Protocol &) = delete;
     Protocol &operator=(const Protocol &) = delete;
 
+    enum Action {
+        UP = 16,
+        DOWN = 14,
+        MOVE = 15
+    };
+
+    struct Touch {
+        float x;
+        float y;
+        Action action;
+        uint32_t id;
+    };
+
+
     void start(uint32_t evtStatus, uint32_t evtPhone);
     void stop();
 
@@ -26,6 +40,7 @@ public:
     void sendFile(const char *filename, const char *value);
     void sendFile(const char *filename, int value);
     void sendClick(float x, float y, bool down);
+    void sendMultiTouch(const std::vector<Touch>& touches);
     void sendMove(float dx, float dy);
     void sendAudio(uint8_t *data, uint32_t length) override;
 
