@@ -2,6 +2,7 @@
 #define SRC_HELPER_FUNCTIONS
 
 #include <iostream>
+#include <cstring>
 #include <SDL2/SDL.h>
 
 #if defined(__linux__) || defined(__APPLE__)

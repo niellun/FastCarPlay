@@ -60,7 +60,9 @@ void processKey(Protocol &protocol, SDL_Keysym key, RunParams &params)
 
     case SDLK_r:
         params.dirty = true;
+        protocol.sendKey(BTN_12);
         return;
+
     case SDLK_h:
         protocol.sendKey(BTN_HOME);
         return;

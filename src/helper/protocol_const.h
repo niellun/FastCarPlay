@@ -38,6 +38,8 @@
 
 #define BTN_SIRI 5
 #define BTN_MICROPHONE 7
+#define BTN_12 12
+// Navigation buttons
 #define BTN_LEFT 100
 #define BTN_RIGHT 101
 #define BTN_SELECT_DOWN 104
@@ -45,10 +47,15 @@
 #define BTN_BACK 106
 #define BTN_DOWN 114
 #define BTN_HOME 200
+// Play control buttons
 #define BTN_PLAY 201
 #define BTN_PAUSE 202
+#define BTN_203 203 // pause/resume??
 #define BTN_NEXT_TRACK 204
 #define BTN_PREVIOUS_TRACK 205
+// Unknown buttons, volume????
+#define BTN_300 300
+#define BTN_301 301
 
 
 #define AUDIO_BUFFER_SIZE 2560

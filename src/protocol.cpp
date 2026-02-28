@@ -153,26 +153,26 @@ void Protocol::sendClick(float x, float y, bool down)
     send(CMD_TOUCH, false, buf, 16);
 }
 
-
-void Protocol::sendMultiTouch(const std::vector<Protocol::Touch>& touches)
+void Protocol::sendMultiTouch(const Multitouch &touches)
 {
-    if (touches.empty()) return;
+    int count = touches.size();
+    if (count == 0)
+        return;
 
-    const size_t touchSize = 16;
-    const size_t totalSize = touches.size() * touchSize;
+    uint8_t buf[MUTLITOUCH_MAX_TOUCH * sizeof(Multitouch::Touch)];
+    uint8_t *p = buf;
 
-    std::vector<uint8_t> buf(totalSize);
-    uint8_t* p = buf.data();
-
-    for (const auto& t : touches) {
-        write_float_le(p + 0,  t.x);
-        write_float_le(p + 4,  t.y);
-        write_uint32_le(p + 8,  static_cast<uint32_t>(t.action));
-        write_uint32_le(p + 12, t.id);
-        p += touchSize;
+    for (int i = 0; i < count; ++i)
+    {
+        const Multitouch::Touch &t = touches[i];
+        write_float_le(p + 0, t.x);
+        write_float_le(p + 4, t.y);
+        write_uint32_le(p + 8, static_cast<uint32_t>(t.state));
+        write_uint32_le(p + 12, static_cast<uint32_t>(t.id));
+        p += 16;
     }
 
-    send(CMD_MULTI_TOUCH, false, buf.data(), totalSize);
+    send(CMD_MULTI_TOUCH, false, buf, 16 * count);
 }
 
 void Protocol::sendMove(float dx, float dy)
