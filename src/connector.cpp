@@ -32,7 +32,7 @@ Connector::~Connector()
     _active = false;
 
     if (_write_thread.joinable())
-        _write_thread.join();    
+        _write_thread.join();
 
     if (_cipher)
     {
@@ -154,7 +154,7 @@ bool Connector::nextState(u_int8_t state)
         _state = state;
         return true;
     }
-    
+
     if (state == PROTOCOL_STATUS_NO_DEVICE && (_nodeviceCount++ > 10 || _state >= PROTOCOL_STATUS_ONLINE))
     {
         _failCount = 0;
@@ -336,7 +336,7 @@ void Connector::readLoop()
 
         if (result != LIBUSB_SUCCESS || transferred != sizeof(Header))
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }
 
@@ -357,11 +357,15 @@ void Connector::readLoop()
             if (!_cipher)
             {
                 std::cout << "[Connection] Received encrypted command " << header.type << " but cipher is not initialised" << std::endl;
+                if (data)
+                    free(data);
                 continue;
             }
             if (!_cipher->Decrypt(data, header.length))
             {
                 std::cout << "[Connection] Can't decrypt command " << header.type << std::endl;
+                if (data)
+                    free(data);
                 continue;
             }
         }
@@ -383,7 +387,7 @@ void Connector::writeLoop()
 
     // Set thread name
     setThreadName("protocol-writer");
-    state(PROTOCOL_STATUS_LINKING);    
+    state(PROTOCOL_STATUS_LINKING);
 
     while (_active)
     {

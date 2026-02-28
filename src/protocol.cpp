@@ -15,6 +15,7 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t paddi
       _width(width),
       _height(height),
       _fps(fps),
+      _keySent(false),
       _phoneConnected(false)
 {
 }
@@ -113,18 +114,22 @@ void Protocol::sendConfig()
         sendInt(CMD_CONTROL, 1002);
 }
 
+bool Protocol::checkKey()
+{
+    bool result = _keySent;
+    _keySent = false;
+    return result;
+}
+
 void Protocol::sendKey(int key)
 {
-    uint8_t buf[4];
-    write_uint32_le(&buf[0], key);
+    sendInt(CMD_CONTROL, key, false);
+    _keySent = true;
+}
 
-    send(CMD_CONTROL, false, buf, 4);
-
-    if(Settings::forceRedraw)
-    {
-        write_uint32_le(&buf[0], BTN_SCREEN_REFRESH);
-        send(CMD_CONTROL, false, buf, 4);
-    }
+void Protocol::requestKeyframe()
+{
+    sendInt(CMD_CONTROL, BTN_SCREEN_REFRESH, false);
 }
 
 void Protocol::sendFile(const char *filename, const char *value)
@@ -323,7 +328,6 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
             memcpy(&cmd, data, sizeof(int));
             onControl(cmd);
         }
-
         break;
 
     case CMD_PLUGGED:

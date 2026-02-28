@@ -2,12 +2,13 @@
 #include "helper/functions.h"
 #include "settings.h"
 
+// Add sample size (buffer size in samples) to ChannelConfig
 ChannelConfig PcmAudio::_configTable[] = {
-    {8000, 1},  // type = 3
-    {48000, 2}, // type = 4
-    {16000, 1}, // type = 5
-    {24000, 1}, // type = 6
-    {16000, 2}, // type = 7
+    {8000, 1, 1},   // type = 3, ~256ms
+    {48000, 2, 4},  // type = 4, ~170ms
+    {16000, 1, 2},  // type = 5, ~256ms
+    {24000, 1, 2},  // type = 6, ~170ms
+    {16000, 2, 2},  // type = 7, ~256ms
 };
 
 // Implementation
@@ -139,7 +140,8 @@ ChannelConfig PcmAudio::getConfig(int type)
 {
     if (type >= 3 && type <= 7)
         return _configTable[type - 3];
-    return {44100, 2};
+    // Default: 44100Hz, stereo, 4096 samples
+    return {44100, 2, 4};
 }
 
 void PcmAudio::Fade(bool enable)
@@ -194,7 +196,7 @@ void PcmAudio::runner()
             spec.freq = config.rate;
             spec.format = AUDIO_S16SYS;
             spec.channels = config.channels;
-            spec.samples = 4096;
+            spec.samples = Settings::audioBuffer*config.scale;
             spec.callback = callback;
             spec.userdata = this;
 
@@ -202,7 +204,7 @@ void PcmAudio::runner()
             if (device == 0)
             {
                 std::cerr << _name << " Failed to open audio: " << SDL_GetError() << std::endl;
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                SDL_Delay(100);
                 continue;
             }
             _config = config;

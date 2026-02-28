@@ -174,7 +174,6 @@ bool Renderer::render(AVFrame *frame)
             return false;
     }
     (this->*_render)(frame);
-    SDL_RenderClear(_renderer);
     SDL_RenderCopy(_renderer, _texture, &_sourceRect, nullptr);
     SDL_RenderPresent(_renderer);
     return true;
@@ -250,9 +249,10 @@ bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight)
     if (!prepareTexture(SDL_PIXELFORMAT_IYUV, frame->width, frame->height))
         return false;
 
+    int swsFlags = Settings::fastScale ? SWS_FAST_BILINEAR : SWS_BILINEAR;
     _sws = sws_getContext(frame->width, frame->height, (AVPixelFormat)frame->format,
                           frame->width, frame->height, AV_PIX_FMT_YUV420P,
-                          SWS_BILINEAR, nullptr, nullptr, nullptr);
+                          swsFlags, nullptr, nullptr, nullptr);
     if (!_sws)
     {
         std::cerr << "[UX] Can't create sws context" << std::endl;

@@ -23,6 +23,7 @@ extern "C"
 #include "pipe_listener.h"
 
 #define FRAME_DELAY_INACTIVE 200
+#define MAX_EVENTS_PER_FRAME 5
 
 static const char *title = "Fast Car Play v0.6";
 static SDL_Window *window = nullptr;
@@ -153,8 +154,9 @@ bool processEvents(Protocol &protocol, RunParams &params, Renderer &renderer)
     int downY = -1;
     int upX = -1;
     int upY = -1;
+    int processed = 0;
 
-    while (SDL_PollEvent(&e))
+    while (SDL_PollEvent(&e) && processed++ < MAX_EVENTS_PER_FRAME)
     {
         switch (e.type)
         {
@@ -268,6 +270,7 @@ void application()
     std::cout << "[Main] Loop" << std::endl;
     uint32_t latestid = 0;
     Uint32 frameStart = SDL_GetTicks();
+    uint32_t FrameRequest = 0;
     while (active)
     {
         if (processEvents(protocol, p, interface))
@@ -294,6 +297,17 @@ void application()
                     p.dirty = false;
                 }
                 videoBuffer.consume();
+                FrameRequest = 0;
+            }
+            else
+            {
+                if (Settings::forceRedraw)
+                {
+                    if (protocol.checkKey())
+                        FrameRequest = 3;
+                    else if (FrameRequest-- > 0)
+                        protocol.requestKeyframe();
+                }
             }
         }
 
@@ -303,16 +317,23 @@ void application()
             p.dirty = false;
         }
 
-        Uint32 frameEnd = SDL_GetTicks();
-        Uint32 frameTime = frameEnd - frameStart;
-        if (active && frameTime < p.frameDelay)
+        if (active)
         {
-            SDL_Delay(p.frameDelay - frameTime); // Sleep only the remaining time
-            frameStart = frameStart + p.frameDelay;
+            Uint32 frameEnd = SDL_GetTicks();
+            Uint32 frameTime = frameEnd - frameStart;
+            if (frameTime < p.frameDelay)
+            {
+                SDL_Delay(p.frameDelay - frameTime);
+                frameStart += p.frameDelay;
+            }
+            else
+            {
+                SDL_Delay(1);
+                frameStart += 1;
+            }
         }
-        else
-            frameStart = frameEnd;
     }
+
     std::cout << "[Main] Stopping" << std::endl;
     SDL_HideWindow(window);
 }
@@ -388,7 +409,7 @@ int start()
         return 1;
     }
 
-    if(!Settings::cursor)
+    if (!Settings::cursor)
         SDL_ShowCursor(SDL_DISABLE);
 
     // Create accelerated renderer for the window

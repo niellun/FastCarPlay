@@ -43,6 +43,7 @@ public:
     static inline Setting<int> audioDelay{"audio-buffer-wait", 2};
     static inline Setting<int> audioDelayCall{"audio-buffer-wait-call", 8};
     static inline Setting<float> audioFade{"audio-fade", 0.3};
+    static inline Setting<int> audioBuffer{"audio-buffer-samples", 2048};    
     static inline Setting<std::string> audioDriver{"audio-driver", ""};
     static inline Setting<std::string> onConnect{"on-connect-script", ""};
     static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};
