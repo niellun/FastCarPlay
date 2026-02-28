@@ -119,6 +119,12 @@ void Protocol::sendKey(int key)
     write_uint32_le(&buf[0], key);
 
     send(CMD_CONTROL, false, buf, 4);
+
+    if(Settings::forceRedraw)
+    {
+        write_uint32_le(&buf[0], BTN_SCREEN_REFRESH);
+        send(CMD_CONTROL, false, buf, 4);
+    }
 }
 
 void Protocol::sendFile(const char *filename, const char *value)

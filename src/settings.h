@@ -35,6 +35,7 @@ public:
     static inline Setting<int> fontSize{"font-size", 30};
     static inline Setting<bool> vsync{"vsync", false};
     static inline Setting<bool> hwDecode{"hw-decode", true};
+    static inline Setting<bool> forceRedraw{"force-redraw", false};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<bool> fastScale{"fast-render-scale", false};
     static inline Setting<int> videoQueue{"video-buffer-size", 32};

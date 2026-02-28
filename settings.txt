@@ -98,6 +98,10 @@
 # This is happening or Raspberry Pi Zero 2W. Disable this to use SW decoding for that case.
 #hw-decode = true
 
+# Request extra frames onevery key press. Usefull if you do not see last updates after key press
+# Enable for RPI hardware decoding and other systems where hardware decoder tends to buffer frames
+#force-redraw = false
+
 # Corrects aspect of UI
 #aspect-correction = 1
 

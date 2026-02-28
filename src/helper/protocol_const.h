@@ -38,7 +38,7 @@
 
 #define BTN_SIRI 5
 #define BTN_MICROPHONE 7
-#define BTN_12 12
+#define BTN_SCREEN_REFRESH 12
 // Navigation buttons
 #define BTN_LEFT 100
 #define BTN_RIGHT 101
