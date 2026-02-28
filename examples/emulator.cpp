@@ -14,10 +14,11 @@ void signal_handler(int signum) {
 int main() {
     const int PIN_HOLD = 17;   // stays ON
     const int PIN_BLINK = 27;  // toggles
-    const double ON_INTERVAL  = 0.2;   // seconds
-    const double OFF_INTERVAL = 0.8;   // seconds
+    const double ON_INTERVAL  = 0.5;   // seconds
+    const double OFF_INTERVAL = 0.5;   // seconds
 
     signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
     // Open the GPIO chip (0 = /dev/gpiochip0 on every Pi)
     int h = lgGpiochipOpen(0);
