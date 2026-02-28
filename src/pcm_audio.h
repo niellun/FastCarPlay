@@ -18,6 +18,7 @@ struct ChannelConfig
 {
     int rate;
     uint8_t channels;
+    uint8_t scale;
 
     bool operator==(ChannelConfig const &other) const
     {

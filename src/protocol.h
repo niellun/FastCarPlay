@@ -22,7 +22,10 @@ public:
     void start(uint32_t evtStatus, uint32_t evtPhone);
     void stop();
 
+
+    bool checkKey();
     void sendKey(int key);
+    void requestKeyframe();
     void sendFile(const char *filename, const uint8_t *data, uint32_t length);
     void sendFile(const char *filename, const char *value);
     void sendFile(const char *filename, int value);
@@ -54,6 +57,7 @@ private:
     uint16_t _width;
     uint16_t _height;
     uint16_t _fps;
+    bool _keySent;
     bool _phoneConnected;
 
     uint32_t _evtStatusId = (uint32_t)-1;

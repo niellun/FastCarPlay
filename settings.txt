@@ -122,6 +122,12 @@
 # Reduction level from 1 (no reduction) to 0 (fully silenced)
 #audio-fade = 0.3
 
+# Basic number of audio sample frames in the output buffer that is scaled by sample rate.
+# This controls the size of the audio buffer used by the audio device.
+# The buffer time is ~ 1/10 buffer size in ms, depending on sample rate e.g. 2048 = ~200ms 
+# Preferably use power of 2 for the values or check your audio driver documentation
+#audio-buffer-samples = 2048
+
 # Force application to use following audio driver as audio output, if empty use default driver
 # See SDL documentation for options. Some of them are
 # alsa - Not supporting multiple channels, navigation over music will not work
