@@ -246,15 +246,14 @@ void application()
     p.fullscreen = Settings::fullscreen;
     p.mouseDown = false;
 
+    Interface interface(renderer);
     if (p.fullscreen)
     {
         SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
         SDL_SetWindowBordered(window, SDL_FALSE);
     }
     SDL_ShowWindow(window);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Set draw color to black
-    SDL_RenderClear(renderer);                      // Clear renderer to black
-    SDL_RenderPresent(renderer);                    // Present initial blank frame
+    interface.drawHome(true, 0);   
 
     VideoBuffer videoBuffer;
     Protocol protocol(Settings::width, Settings::height, Settings::sourceFps, AV_INPUT_BUFFER_PADDING_SIZE);
@@ -264,7 +263,7 @@ void application()
     audioMain.start(&protocol.audioStreamMain);
     audioAux.start(&protocol.audioStreamAux, &audioMain);
     protocol.start(evtStatus, evtConnected);
-    Interface interface(renderer);
+
     PipeListener pipeListener(protocol, (Settings::keyPipe.value.length() > 2) ? Settings::keyPipe.value.c_str() : nullptr);
 
     std::cout << "[Main] Loop" << std::endl;
