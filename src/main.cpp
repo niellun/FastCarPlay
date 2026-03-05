@@ -333,9 +333,9 @@ void application()
             frameStart += 1;
         }
     }
-}
-std::cout << "[Main] Stopping" << std::endl;
-SDL_HideWindow(window);
+
+    std::cout << "[Main] Stopping" << std::endl;
+    SDL_HideWindow(window);
 }
 
 bool setAudioDriver()
