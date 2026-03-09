@@ -34,7 +34,9 @@ static KeySetting<int> *keyMap[] = {
     &Settings::keyReject,
     &Settings::keyVideoFocus,
     &Settings::keyVideoRelease,
-    &Settings::keyNavFocus};
+    &Settings::keyNavFocus,
+    &Settings::keyNavRelease
+};
 
 static constexpr size_t keyMapSize = sizeof(keyMap) / sizeof(keyMap[0]);
 
