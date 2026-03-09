@@ -334,6 +334,7 @@ void Connector::readLoop()
 
         if (result != LIBUSB_SUCCESS || transferred != sizeof(Header))
         {
+            std::cout << "[Connection] Transfer error" << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
         }

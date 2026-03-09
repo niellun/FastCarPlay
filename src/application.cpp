@@ -341,18 +341,17 @@ void Application::loop()
                         std::cout << "[App] Frame drop " << frameid - latestFrameid - 1 << " on " << frameid << std::endl;
                     latestFrameid = frameid;
                     _state.dirty = false;
-                    if (_state.requestFrame >= 0)
-                        _state.requestFrame++;
                 }
                 videoBuffer.consume();
             }
 
             if (_state.requestFrame > 0 && Settings::forceRedraw > 0)
             {
-                if (_state.requestFrame <= Settings::forceRedraw)
+                if (_state.requestFrame++ >= Settings::forceRedraw)
+                {
                     protocol.requestKeyframe();
-                else
                     _state.requestFrame = -1;
+                }
             }
         }
 
