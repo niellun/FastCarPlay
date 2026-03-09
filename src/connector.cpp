@@ -315,8 +315,6 @@ void Connector::printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool 
 
 void Connector::readLoop()
 {
-    std::mutex mtx;
-    std::condition_variable cv;
     Header header;
     int transferred = 0;
     uint8_t *data = nullptr;

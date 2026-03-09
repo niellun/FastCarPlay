@@ -249,7 +249,7 @@ void Protocol::sendEncryption()
 {
     if (!_cipher)
     {
-        std::cout << "[Protocol] Can't enable encryption: cypher is not initalised";
+        std::cout << "[Protocol] Can't enable encryption: cypher is not initalised" << std::endl;
         return;
     }
     uint8_t buf[4];
@@ -259,6 +259,7 @@ void Protocol::sendEncryption()
 
 void Protocol::onStatus(uint8_t status)
 {
+    std::cout << "[Protocol] Status " << (int)status << std::endl;
     pushEvent(_evtStatusId, status);
 }
 

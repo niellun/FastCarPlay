@@ -1,5 +1,5 @@
-#ifndef SRC_NAMED_PIPE_H
-#define SRC_NAMED_PIPE_H
+#ifndef SRC_PIPE_LISTENER
+#define SRC_PIPE_LISTENER
 
 #include <thread>
 #include <atomic>
@@ -7,16 +7,15 @@
 
 class PipeListener {
 public:
-    PipeListener(Protocol &protocol, const char *path);
+    PipeListener(const char *path);
     ~PipeListener();
 
 private:
     void loop();
 
-    Protocol &_protocol;
     const char *_path;
     bool _active;
     std::thread _thread;
 };
 
-#endif // SRC_NAMED_PIPE_H
+#endif /* SRC_PIPE_LISTENER */

@@ -12,6 +12,7 @@ class ISetting
 {
 public:
     std::string name;
+    ISetting(std::string name_) : name(std::move(name_)) {}
     virtual void parse(std::string &str) = 0;
     virtual std::string asString() const = 0;
 };
@@ -30,9 +31,8 @@ class Setting : public ISetting
 public:
     T value;
     Setting(std::string name_, T default_)
-        : value(default_)
+        : ISetting(std::move(name_)), value(default_)
     {
-        name = std::move(name_);
         _settings().push_back(this);
     }
 
@@ -57,7 +57,7 @@ public:
                 else if (str == "0" || str == "false")
                     value = false;
                 else
-                    throw new std::runtime_error("Can't convert to boolean.");
+                    throw std::runtime_error("Can't convert to boolean.");
             }
             else if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
             {
@@ -87,6 +87,18 @@ public:
             return value;
         else
             return std::to_string(value);
+    }
+};
+
+template <typename T>
+class KeySetting : public Setting<T>
+{
+public:
+    int key;
+
+    KeySetting(std::string name_, T default_, int key_)
+        : Setting<T>(std::move(name_), default_), key(key_)
+    {
     }
 };
 

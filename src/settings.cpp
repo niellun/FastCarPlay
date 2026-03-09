@@ -3,13 +3,13 @@
 #include <iostream>
 #include <fstream>
 
-void Settings::load(const std::string &filename)
+bool Settings::load(const std::string &filename)
 {
     std::ifstream file(filename);
     if (!file.is_open())
     {
         std::cerr << "[Settings] Cannot open “" << filename << "”" << std::endl;
-        return;
+        return false;
     }
 
     std::string line;
@@ -48,6 +48,7 @@ void Settings::load(const std::string &filename)
         if (!found)
             std::cerr << "[Settings] Unknown key “" << key << "”" << std::endl;
     }
+    return true;
 }
 
 void Settings::print()

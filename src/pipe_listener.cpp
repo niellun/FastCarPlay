@@ -1,23 +1,21 @@
 #include "pipe_listener.h"
 
+#include <SDL2/SDL.h>
+
 #include <cerrno>
 #include <fcntl.h>
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
 
-PipeListener::PipeListener(Protocol &protocol, const char *path)
-    : _protocol(protocol), _path(path), _active(false)
+PipeListener::PipeListener(const char *path)
+    : _path(path), _active(false)
 {
-    if(path == nullptr)
+    if (path == nullptr)
         return;
     unlink(_path);
-    if (mkfifo(_path, 0666) == -1)
-        if (errno != EEXIST)
-        {
-            std::cout << "[Pipe] Failed to create FIFO " << _path << ": " << std::strerror(errno) << std::endl;
-            return;
-        }
+    if (mkfifo(_path, 0666) == -1 && errno != EEXIST)
+        throw std::runtime_error(std::string("[Pipe] Failed to create FIFO ") + _path + ": " + std::strerror(errno));
 
     _active = true;
     _thread = std::thread(&PipeListener::loop, this);
@@ -57,7 +55,15 @@ void PipeListener::loop()
         {
             std::cout << "[Pipe] Received: " << (int)value << std::endl;
             if (value != 0)
-                _protocol.sendKey(value);
+            {
+                SDL_Event e{};
+                e.type = SDL_KEYDOWN;
+                e.key.state = SDL_RELEASED;
+                e.key.repeat = 0;
+                e.key.keysym.sym = static_cast<SDL_Keycode>(value);
+                e.key.keysym.scancode = SDL_GetScancodeFromKey(e.key.keysym.sym);
+                SDL_PushEvent(&e);
+            }
         }
 
         if (fd >= 0)

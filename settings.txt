@@ -20,8 +20,11 @@
 # source images and drawing times
 #fps = 50 
 
-# Application starts in full screen
-#fullscreen = true
+# Application window mode
+# 0 - windowed
+# 1 - fullscreen
+# 2 - headless linux (in case of direct output to screen without window manager)
+#window-mode = 0
 
 # Show mouse pointer
 #cursor = false
@@ -100,7 +103,8 @@
 
 # Request extra frames onevery key press. Usefull if you do not see last updates after key press
 # Enable for RPI hardware decoding and other systems where hardware decoder tends to buffer frames
-#force-redraw = false
+# 0 - disabled, enter number of frames to request (find minimal value that get all screen updates)
+#force-redraw = 0
 
 # Corrects aspect of UI
 #aspect-correction = 1
@@ -152,24 +156,41 @@
 #on-connect-script = 
 #on-disconnect-script = 
 
-# Map extra keys for control with there codes
+##############################################################################
+# 4. Key mapping
+##############################################################################
+
+# Map keys to control 
 # If you set logging true you and press keys you will see there codes in logs
-#key-left = 0
-#key-right = 0
-#key-enter = 0
-#key-back = 0
-#key-home = 0
+#key-siri = 115             # S
+#key-nightmode-on = 122     # Z
+#key-nightmode-off = 120    # X
+#key-left = 1073741903      # Left arrow
+#key-right = 1073741904     # Right arrow
+#key-enter = 13             # Enter
+# For pipe to simulate key up after key-enter press
+#key-enterup = 0            # unmapped by default
+#key-back = 8               # Backspace
+#key-up = 1073741906        # Up arrow
+#key-down = 1073741905      # Down arrow
+#key-home = 104             # H
+#key-play = 93              # P
+#key-pause = 91             # [
+#key-play-toggle = 112      # ]
+#key-next = 46              # >
+#key-previous = 44          # <
+#key-call-accept = 97       # A
+#key-call-reject = 115      # S
+#key-video-focus = 118      # V
+#key-video-release = 98     # B
+#key-nav-focus = 110        # N
+#key-nav-release = 109      # M
 
 # Path for named pipe that keys are going to be listen on to.
 # If empty pipe listening is disables.
 # Example /tmp/fastcarplay_pipe
-# Keys are bytes and defined directly as in protocol, examples:
-# BTN_LEFT 100
-# BTN_RIGHT 101
-# BTN_SELECT_DOWN 104
-# BTN_SELECT_UP 105
-# BTN_BACK 106
-# BTN_HOME 200
+# Keys are byte value [1..255] 
+# They are mapped to keys defined above 
 #key-pipe-path = 
 
 ##############################################################################

@@ -28,7 +28,6 @@ bool Interface::drawHome(bool force, int state)
     _state = state;
     int width, height;
     SDL_GetRendererOutputSize(_renderer, &width, &height);
-    SDL_RenderClear(_renderer);
 
     _mainImage.draw(_renderer, width, height);
     if (state == PROTOCOL_STATUS_ERROR)

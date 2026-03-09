@@ -37,7 +37,7 @@ void Decoder::stop()
 
 void Decoder::flush()
 {
-    if(_context)
+    if (_context)
         avcodec_flush_buffers(_context);
 }
 
@@ -63,9 +63,9 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
             break;
         }
 
-        if(Settings::codecLowDelay)
+        if (Settings::codecLowDelay)
             result->flags |= AV_CODEC_FLAG_LOW_DELAY;
-        if(Settings::codecFast)
+        if (Settings::codecFast)
             result->flags2 |= AV_CODEC_FLAG2_FAST;
 
         int ret = avcodec_open2(result, codec, nullptr);

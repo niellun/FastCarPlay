@@ -1,6 +1,7 @@
 #ifndef SRC_HELPER_PROTOCOL_CONST
 #define SRC_HELPER_PROTOCOL_CONST
 
+#define PROTOCOL_STATUS_UNKNOWN -1     // Manual > 0
 #define PROTOCOL_STATUS_INITIALISING 0 // Initialised > 1
 #define PROTOCOL_STATUS_NO_DEVICE 1    // Start linking > 3
 #define PROTOCOL_STATUS_LINKING 2      // Linked > 4, Failed in sequence > 3
