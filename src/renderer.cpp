@@ -291,11 +291,21 @@ void Renderer::rgb(AVFrame *frame)
 
 void Renderer::nv(AVFrame *frame)
 {
-    SDL_UpdateNVTexture(
-        _texture,
-        nullptr,
-        frame->data[0], frame->linesize[0],
-        frame->data[1], frame->linesize[1]);
+    uint8_t *pixels = nullptr;
+    int pitch = 0;
+    if (SDL_LockTexture(_texture, nullptr, (void **)&pixels, &pitch) != 0)
+        return;
+
+    // Y plane
+    for (int i = 0; i < frame->height; i++)
+        memcpy(pixels + i * pitch, frame->data[0] + i * frame->linesize[0], frame->width);
+
+    // UV interleaved plane (half height, full width)
+    uint8_t *uv = pixels + pitch * frame->height;
+    for (int i = 0; i < frame->height / 2; i++)
+        memcpy(uv + i * pitch, frame->data[1] + i * frame->linesize[1], frame->width);
+
+    SDL_UnlockTexture(_texture);
 }
 
 void Renderer::yuv(AVFrame *frame)
