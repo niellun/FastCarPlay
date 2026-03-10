@@ -403,7 +403,7 @@ void Connector::writeLoop()
             {
                 send(170);
                 std::unique_lock<std::mutex> lock(mtx);
-                cv.wait_for(lock, std::chrono::seconds(2), [&]()
+                cv.wait_for(lock, std::chrono::seconds(3), [&]()
                             { return !_active.load(); });
             }
 

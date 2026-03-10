@@ -1,6 +1,8 @@
 #include "application.h"
 
 #include <SDL2/SDL_ttf.h>
+#include <chrono>
+#include <thread>
 
 #include "struct/video_buffer.h"
 
@@ -35,8 +37,7 @@ static KeySetting<int> *keyMap[] = {
     &Settings::keyVideoFocus,
     &Settings::keyVideoRelease,
     &Settings::keyNavFocus,
-    &Settings::keyNavRelease
-};
+    &Settings::keyNavRelease};
 
 static constexpr size_t keyMapSize = sizeof(keyMap) / sizeof(keyMap[0]);
 
@@ -322,12 +323,16 @@ void Application::loop()
     protocol.start(_evtBase + EVT_STATUS_OFFSET, _evtBase + EVT_PHONE_OFFSET);
 
     std::cout << "[App] Loop" << std::endl;
-    Uint32 frameStart = SDL_GetTicks();
+    std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
     AVFrame *frame = nullptr;
     uint32_t frameid = 0;
     uint32_t latestFrameid = 0;
-    uint32_t frameTargetTime = 1000 / Settings::fps;
+    uint32_t frameTargetTime = 1000000 / Settings::fps;
     int frameDelay = 0;
+
+    static long long delaySum = 0;
+    static int delayCount = 0;
+
     while (_active)
     {
         if (_state.connected && _state.showVideo)
@@ -378,10 +383,28 @@ void Application::loop()
 
         if (_active)
         {
-            Uint32 frameEnd = SDL_GetTicks();
-            frameDelay = frameTargetTime - (frameEnd - frameStart);
-            SDL_Delay(frameDelay > 0 ? frameDelay : 1);
-            frameStart += frameTargetTime;
+            auto frameEnd = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frameEnd - frameStart).count();
+
+            auto frameDelay = frameTargetTime - elapsed;
+            std::this_thread::sleep_for(std::chrono::microseconds(frameDelay > 0 ? frameDelay : 100));
+
+            frameStart += std::chrono::microseconds(frameTargetTime);
+
+            if (frameDelay < 0)
+                std::cout << "[App] Delay " << frameDelay << std::endl;
+
+            delaySum += frameDelay;
+            delayCount++;
+
+            if (delayCount == 20)
+            {
+                double avgDelay = delaySum / 20.0;
+                std::cout << "[App] Avg Delay (20 frames): " << avgDelay << " us" << std::endl;
+
+                delaySum = 0;
+                delayCount = 0;
+            }
         }
     }
 
