@@ -332,6 +332,7 @@ void Application::loop()
 
     static long long delaySum = 0;
     static int delayCount = 0;
+    static int minDelay = 0;
 
     while (_active)
     {
@@ -391,19 +392,20 @@ void Application::loop()
 
             frameStart += std::chrono::microseconds(frameTargetTime);
 
-            if (frameDelay < 0)
-                std::cout << "[App] Delay " << frameDelay << std::endl;
+            if (frameDelay < minDelay)
+                minDelay = frameDelay;
 
             delaySum += frameDelay;
             delayCount++;
 
-            if (delayCount == 20)
+            if (delayCount == 30)
             {
-                double avgDelay = delaySum / 20.0;
-                std::cout << "[App] Avg Delay (20 frames): " << avgDelay << " us" << std::endl;
+                double avgDelay = delaySum / 30.0;
+                std::cout << "[App] Avg Delay (30 frames): " << avgDelay << " us. Min delay: "<< minDelay << std::endl;
 
                 delaySum = 0;
                 delayCount = 0;
+                minDelay = frameDelay;
             }
         }
     }
