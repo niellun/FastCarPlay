@@ -9,7 +9,7 @@
 
 
 Recorder::Recorder(uint16_t buffSize)
-    : _sender(nullptr), _active(false), _device(0), _data(buffSize)
+    : _sender(nullptr), _active(false), _data(buffSize)
 {
 }
 

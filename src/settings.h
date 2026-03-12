@@ -42,6 +42,7 @@ public:
     static inline Setting<int> forceRedraw{"force-redraw", 0};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<bool> fastScale{"fast-render-scale", false};
+    static inline Setting<bool> alternativeRendering{"alternative-rendering", false};
     static inline Setting<int> videoQueue{"video-buffer-size", 32};
     static inline Setting<int> audioQueue{"audio-buffer-size", 16};
     static inline Setting<int> audioDelay{"audio-buffer-wait", 2};
@@ -49,6 +50,7 @@ public:
     static inline Setting<float> audioFade{"audio-fade", 0.3};
     static inline Setting<int> audioBuffer{"audio-buffer-samples", 2048};
     static inline Setting<std::string> audioDriver{"audio-driver", ""};
+    static inline Setting<std::string> renderDriver{"renderer-driver", "auto"};
     static inline Setting<std::string> onConnect{"on-connect-script", ""};
     static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};
 
@@ -56,8 +58,8 @@ public:
     static inline KeySetting<int> keySiri{"key-siri", 115, 5};
     static inline KeySetting<int> keyNightOn{"key-nightmode-on", 122, 16};
     static inline KeySetting<int> keyNightOff{"key-nightmode-off", 120, 17};
-    static inline KeySetting<int> keyLeft{"key-left", 1073741903, 100};
-    static inline KeySetting<int> keyRight{"key-right", 1073741904, 101};
+    static inline KeySetting<int> keyLeft{"key-left", 1073741904, 100};
+    static inline KeySetting<int> keyRight{"key-right", 1073741903, 101};
     static inline KeySetting<int> keyEnter{"key-enter", 13, 104};
     static inline KeySetting<int> keyEnterUp{"key-enterup", 0, 105};
     static inline KeySetting<int> keyBack{"key-back", 8, 106};
@@ -79,8 +81,8 @@ public:
 
     // Debug section
     static inline Setting<int> protocolDebug{"protocol-debug", 0};
-    static inline Setting<float> codecLowDelay{"decode-low-delay", true};
-    static inline Setting<float> codecFast{"decode-fast", false};
+    static inline Setting<bool> codecLowDelay{"decode-low-delay", true};
+    static inline Setting<bool> codecFast{"decode-fast", false};
 
     static bool load(const std::string &filename);
     static void print();

@@ -34,7 +34,8 @@ static KeySetting<int> *keyMap[] = {
     &Settings::keyReject,
     &Settings::keyVideoFocus,
     &Settings::keyVideoRelease,
-    &Settings::keyNavFocus};
+    &Settings::keyNavFocus,
+    &Settings::keyNavRelease};
 
 static constexpr size_t keyMapSize = sizeof(keyMap) / sizeof(keyMap[0]);
 
@@ -85,10 +86,7 @@ void Application::start(const char *title)
     std::cout << "[App] Initialising" << std::endl;
 
     // Create SDL window centered on screen
-    if (Settings::fastScale)
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
-    else
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, Settings::fastScale ? "nearest" : "best");
 
     // Prepare window, show it in headless to avoid blinking, otherwise hidden untill iniailised
     bool fullsize = Settings::isFullscreen() || Settings::isHeadless();
@@ -111,9 +109,21 @@ void Application::start(const char *title)
     Uint32 flags = SDL_RENDERER_ACCELERATED;
     if (Settings::vsync)
         flags |= SDL_RENDERER_PRESENTVSYNC;
+
+    SDL_SetHint(SDL_HINT_RENDER_DRIVER, Settings::renderDriver.value.c_str());
     _renderer = SDL_CreateRenderer(_window, -1, flags);
+
     if (!_renderer)
         throw std::runtime_error(std::string("SDL can't create renderer > ") + SDL_GetError());
+
+    SDL_RendererInfo rendererInfo{};
+    if (SDL_GetRendererInfo(_renderer, &rendererInfo) == 0)
+    {
+        std::cout << "[App] Renderer: " << rendererInfo.name
+                  << " (" << ((rendererInfo.flags & SDL_RENDERER_ACCELERATED) ? "accelerated" : "software")
+                  << ", " << ((rendererInfo.flags & SDL_RENDERER_PRESENTVSYNC) ? "vsync" : "no-vsync")
+                  << ")" << std::endl;
+    }
 
     // Register additional events
     _evtBase = SDL_RegisterEvents(2);
@@ -204,7 +214,7 @@ bool Application::processSystemEvent(const SDL_Event &e)
         _state.connected = e.user.code != 0;
         _state.frameRendered = false;
         _state.dirty = true;
-        _state.requestFrame = -1;
+        _state.requestFrame = 0;
         _state.flushBuffers = _state.connected;
         return true;
     }
@@ -324,7 +334,8 @@ void Application::loop()
     AVFrame *frame = nullptr;
     uint32_t frameid = 0;
     uint32_t latestFrameid = 0;
-    uint32_t frameTargetTime = 1000 / Settings::fps;
+    uint32_t requestFrameId = 0;
+    uint32_t frameTargetTime = Settings::fps > 0 ? 1000 / Settings::fps : 1000;
     int frameDelay = 0;
     while (_active)
     {
@@ -339,18 +350,20 @@ void Application::loop()
                         std::cout << "[App] Frame drop " << frameid - latestFrameid - 1 << " on " << frameid << std::endl;
                     latestFrameid = frameid;
                     _state.dirty = false;
-                    if (_state.requestFrame >= 0)
-                        _state.requestFrame++;
                 }
                 videoBuffer.consume();
             }
 
-            if (_state.requestFrame > 0 && Settings::forceRedraw > 0)
+            if (_state.requestFrame > 0 && Settings::forceRedraw > 0 && ++_state.requestFrame > Settings::forceRedraw)
             {
-                if (_state.requestFrame <= Settings::forceRedraw)
+                if (latestFrameid == requestFrameId)
+                {
                     protocol.requestKeyframe();
+                    _state.requestFrame = 1;
+                    requestFrameId = latestFrameid;
+                }
                 else
-                    _state.requestFrame = -1;
+                    _state.requestFrame = 0;
             }
         }
 
@@ -365,7 +378,10 @@ void Application::loop()
         else
         {
             if (processFrameEvents(protocol, interface) && Settings::forceRedraw > 0)
+            {
                 _state.requestFrame = 1;
+                requestFrameId = latestFrameid;
+            }
         }
 
         if (_state.flushBuffers)
@@ -375,12 +391,20 @@ void Application::loop()
             videoBuffer.reset();
         }
 
-        if (_active)
+        if (_active && !Settings::vsync)
         {
             Uint32 frameEnd = SDL_GetTicks();
-            frameDelay = frameTargetTime - (frameEnd - frameStart);
-            SDL_Delay(frameDelay > 0 ? frameDelay : 1);
-            frameStart += frameTargetTime;
+            frameDelay = frameTargetTime - (frameEnd - frameStart);            
+            if(latestFrameid > 0 && latestFrameid != videoBuffer.latestId())
+            {
+                SDL_Delay(1);
+                frameStart = frameEnd;
+            }
+            else
+            {
+                SDL_Delay(frameDelay > 0 ? frameDelay : 1);
+                frameStart += frameTargetTime;
+            }
         }
     }
 

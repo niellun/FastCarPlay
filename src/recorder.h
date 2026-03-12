@@ -46,7 +46,6 @@ private:
     IAudioSender *_sender;
     std::atomic<bool> _active;
     std::thread _thread;
-    SDL_AudioDeviceID _device;
     AtomicQueue<AudioChunk> _data;
 };
 

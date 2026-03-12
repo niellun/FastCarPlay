@@ -6,6 +6,7 @@
 #include <iostream>
 #include <algorithm>
 #include <stdexcept>
+#include <type_traits>
 
 // Base interface for any one setting
 class ISetting

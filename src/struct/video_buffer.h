@@ -42,6 +42,14 @@ public:
         }
     }
 
+    uint32_t latestId()
+    {
+        int index = _latest.load();
+        if (index < 0)
+            return 0;
+        return _ids[index];
+    }
+
     bool latest(AVFrame **frame, uint32_t *id)
     {
         _reading.store(_latest.load());

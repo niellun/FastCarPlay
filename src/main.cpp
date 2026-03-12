@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <memory>
 
 #include "helper/functions.h"
 

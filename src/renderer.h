@@ -75,7 +75,9 @@ private:
 
     void rgb(AVFrame *frame);
     void nv(AVFrame *frame);
+    void nvAlternative(AVFrame *frame);
     void yuv(AVFrame *frame);
+    void yuvAlternative(AVFrame *frame);
     void scale(AVFrame *frame);
 
     SDL_Texture *_texture;
@@ -85,7 +87,11 @@ private:
     DrawFuncType _render;
     SwsContext *_sws;
     AVFrame *_frame;
-    static const FormatMapping _mapping[];
+    FormatMapping _mapping[4] = {
+        {AV_PIX_FMT_RGB24, SDL_PIXELFORMAT_RGB24, &Renderer::rgb, "RGB24"},
+        {AV_PIX_FMT_YUV420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, "YUV420P"},
+        {AV_PIX_FMT_YUVJ420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, "YUVJ420P"},
+        {AV_PIX_FMT_NV12, SDL_PIXELFORMAT_NV12, &Renderer::nv, "NV12"}};
 };
 
 #endif /* SRC_RENDERER */

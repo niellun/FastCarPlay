@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include <cstring>
 #include <iostream>
 #include "settings.h"
 #include "helper/functions.h"
@@ -140,12 +141,6 @@ SDL_Rect RendererImage::draw(SDL_Renderer *renderer, int w, int h)
     return dst;
 }
 
-const Renderer::FormatMapping Renderer::_mapping[] = {
-    {AV_PIX_FMT_RGB24, SDL_PIXELFORMAT_RGB24, &Renderer::rgb, "RGB24"},
-    {AV_PIX_FMT_YUV420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, "YUV420P"},
-    {AV_PIX_FMT_YUVJ420P, SDL_PIXELFORMAT_IYUV, &Renderer::yuv, "YUVJ420P"},
-    {AV_PIX_FMT_NV12, SDL_PIXELFORMAT_NV12, &Renderer::nv, "NV12"}};
-
 Renderer::Renderer(SDL_Renderer *renderer)
     : xScale(0),
       yScale(0),
@@ -158,6 +153,12 @@ Renderer::Renderer(SDL_Renderer *renderer)
       _sws(nullptr),
       _frame(nullptr)
 {
+    if (Settings::alternativeRendering)
+    {
+        _mapping[1].function = &Renderer::yuvAlternative;
+        _mapping[2].function = &Renderer::yuvAlternative;
+        _mapping[3].function = &Renderer::nvAlternative;
+    }
 }
 
 Renderer::~Renderer()
@@ -298,6 +299,25 @@ void Renderer::nv(AVFrame *frame)
         frame->data[1], frame->linesize[1]);
 }
 
+void Renderer::nvAlternative(AVFrame *frame)
+{
+    uint8_t *pixels = nullptr;
+    int pitch = 0;
+    if (SDL_LockTexture(_texture, nullptr, (void **)&pixels, &pitch) != 0)
+        return;
+
+    // Y plane
+    for (int i = 0; i < frame->height; i++)
+        memcpy(pixels + i * pitch, frame->data[0] + i * frame->linesize[0], frame->width);
+
+    // UV interleaved plane (half height, full width)
+    uint8_t *uv = pixels + pitch * frame->height;
+    for (int i = 0; i < frame->height / 2; i++)
+        memcpy(uv + i * pitch, frame->data[1] + i * frame->linesize[1], frame->width);
+
+    SDL_UnlockTexture(_texture);
+}
+
 void Renderer::yuv(AVFrame *frame)
 {
     SDL_UpdateYUVTexture(
@@ -306,6 +326,30 @@ void Renderer::yuv(AVFrame *frame)
         frame->data[0], frame->linesize[0],
         frame->data[1], frame->linesize[1],
         frame->data[2], frame->linesize[2]);
+}
+
+void Renderer::yuvAlternative(AVFrame *frame)
+{
+    uint8_t *pixels = nullptr;
+    int pitch = 0;
+    if (SDL_LockTexture(_texture, nullptr, (void **)&pixels, &pitch) != 0)
+        return;
+
+    // Y plane
+    for (int i = 0; i < frame->height; i++)
+        memcpy(pixels + i * pitch, frame->data[0] + i * frame->linesize[0], frame->width);
+
+    // U plane
+    uint8_t *u = pixels + pitch * frame->height;
+    for (int i = 0; i < frame->height / 2; i++)
+        memcpy(u + i * (pitch / 2), frame->data[1] + i * frame->linesize[1], frame->width / 2);
+
+    // V plane
+    uint8_t *v = u + (pitch / 2) * (frame->height / 2);
+    for (int i = 0; i < frame->height / 2; i++)
+        memcpy(v + i * (pitch / 2), frame->data[2] + i * frame->linesize[2], frame->width / 2);
+
+    SDL_UnlockTexture(_texture);
 }
 
 void Renderer::scale(AVFrame *frame)
@@ -317,10 +361,8 @@ void Renderer::scale(AVFrame *frame)
               _frame->data,
               _frame->linesize);
 
-    SDL_UpdateYUVTexture(
-        _texture,
-        nullptr,
-        _frame->data[0], _frame->linesize[0],
-        _frame->data[1], _frame->linesize[1],
-        _frame->data[2], _frame->linesize[2]);
+    if (Settings::alternativeRendering)
+        yuvAlternative(_frame);
+    else
+        yuv(_frame);
 }

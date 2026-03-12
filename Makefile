@@ -23,7 +23,7 @@ all: debug
 
 LDOPTIONS := -lSDL2 -lSDL2_ttf -lavformat -lavcodec -lavutil -lswscale -lusb-1.0 -lssl -lcrypto
 LDFLAGS := 
-CXXCOMMON := -Wall -Isrc
+CXXCOMMON := -Wall -std=c++17 -Isrc
 
 debug: BUILD_TYPE := debug
 debug: CXXFLAGS := -g -O0 -DPROTOCOL_DEBUG -fsanitize=address -fno-omit-frame-pointer 
@@ -32,8 +32,8 @@ debug: TARGET := $(TARGET_NAME)-debug
 debug: prepare
 
 release: BUILD_TYPE := release
-release: CXXFLAGS := -Ofast -march=native -fno-plt -fno-rtti -flto -fdata-sections -ffunction-sections -DNDEBUG
-release: LDFLAGS += -Ofast -march=native -Wl,--gc-sections -flto
+release: CXXFLAGS := -O3 -ffast-math -march=native -fno-plt -fno-rtti -flto -fdata-sections -ffunction-sections -DNDEBUG
+release: LDFLAGS += -O3 -ffast-math -march=native -Wl, -flto
 release: TARGET := $(TARGET_NAME)
 release: prepare
 

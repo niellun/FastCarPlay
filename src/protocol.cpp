@@ -22,6 +22,7 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t paddi
 
 Protocol::~Protocol()
 {
+    stop();
 }
 
 void Protocol::start(uint32_t evtStatus, uint32_t evtPhone)

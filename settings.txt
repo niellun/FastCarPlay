@@ -139,6 +139,13 @@
 # pipewire
 #audio-driver = 
 
+# Force SDL renderer backend, leave empty for automatic
+# Examples: opengles2, opengl, software
+#renderer-driver = 
+
+# Use alternative video rendering method. May reduce CPU load and increase smoothness.
+#alternative-rendering = false
+
 # Run script or app on phone connected and disconnected. 
 # This script/app should be fast, otherwise it will block system. 
 # If you need to start application in background use scripts with fork 
@@ -165,8 +172,8 @@
 #key-siri = 115             # S
 #key-nightmode-on = 122     # Z
 #key-nightmode-off = 120    # X
-#key-left = 1073741903      # Left arrow
-#key-right = 1073741904     # Right arrow
+#key-left = 1073741904      # Left arrow
+#key-right = 1073741903     # Right arrow
 #key-enter = 13             # Enter
 # For pipe to simulate key up after key-enter press
 #key-enterup = 0            # unmapped by default

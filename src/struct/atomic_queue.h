@@ -78,8 +78,8 @@ public:
         unique_lock<std::mutex> lock(_mtx);
 
         _lock.wait(lock, [&]
-                   { return _count > count || !waitFlag; });
-        return waitFlag;
+                   { return _count > count || !waitFlag.load(); });
+        return waitFlag.load();
     }
 
     void clear()

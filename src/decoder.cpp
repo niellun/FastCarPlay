@@ -49,6 +49,13 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
     AVCodecContext *result = nullptr;
 
     // Try hardware-accelerated decoders by iterating registered codecs
+    // NOTE: simply opening a codec with AV_CODEC_CAP_HARDWARE is not sufficient
+    // on platforms such as V4L2M2M. A proper hwdevice context and get_format
+    // callback must be setup so that AVFrames reference driver buffers instead
+    // of being converted to system memory.  This implementation currently
+    // only picks a hardware-capable codec but still operates in software mode.
+    // Fixing this will eliminate an extra copy and allow true GPU‑accelerated
+    // decoding on the Pi.
     while ((codec = av_codec_iterate(&iter)) && Settings::hwDecode)
     {
         if (!av_codec_is_decoder(codec) || codec->id != codec_id)
@@ -115,7 +122,7 @@ void Decoder::runner()
 
     // Load codec context
     _context = load_codec(_codecId);
-    if (_status.null(_context, ("Can't find decoder for codec " + _codecId)))
+    if (_status.null(_context, std::string("Can't find decoder for codec ") + avcodec_get_name(_codecId)))
         return;
     std::string codec = _context->codec->name;
 
@@ -201,6 +208,19 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
                 av_frame_move_ref(out, frame);
                 _vb->commit();
             }
+        }
+    }
+
+    // push null packet to flush decoder and drain delayed frames
+    if (_context)
+    {
+        avcodec_send_packet(context, nullptr);
+        while (avcodec_receive_frame(context, frame) == 0)
+        {
+            AVFrame *out = _vb->write(counter++);
+            av_frame_unref(out);
+            av_frame_move_ref(out, frame);
+            _vb->commit();
         }
     }
 }
