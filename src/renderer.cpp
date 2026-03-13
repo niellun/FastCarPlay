@@ -182,8 +182,9 @@ bool Renderer::render(AVFrame *frame)
 
 bool Renderer::prepareTexture(uint32_t format, int width, int height)
 {
+    int access = Settings::alternativeRendering ? SDL_TEXTUREACCESS_STREAMING : SDL_TEXTUREACCESS_STATIC;
     _texture = SDL_CreateTexture(_renderer, format,
-                                 SDL_TEXTUREACCESS_STREAMING,
+                                 access,
                                  width, height);
     if (!_texture)
     {

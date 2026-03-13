@@ -86,7 +86,7 @@ void Application::start(const char *title)
     std::cout << "[App] Initialising" << std::endl;
 
     // Create SDL window centered on screen
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, Settings::fastScale ? "nearest" : "best");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, Settings::fastScale ? "nearest" : "linear");
 
     // Prepare window, show it in headless to avoid blinking, otherwise hidden untill iniailised
     bool fullsize = Settings::isFullscreen() || Settings::isHeadless();
