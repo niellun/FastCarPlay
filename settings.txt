@@ -109,6 +109,13 @@
 # Corrects aspect of UI
 #aspect-correction = 1
 
+# Force SDL renderer backend, leave empty for automatic
+# Examples: opengles2, opengl, software
+#renderer-driver = 
+
+# Use alternative video rendering method. May reduce CPU load and increase smoothness.
+#alternative-rendering = false
+
 # Select faster method of scaling image to window size (nearest) or better quality (linear)
 #fast-render-scale = false
 
@@ -138,13 +145,6 @@
 # pulseaudio
 # pipewire
 #audio-driver = 
-
-# Force SDL renderer backend, leave empty for automatic
-# Examples: opengles2, opengl, software
-#renderer-driver = 
-
-# Use alternative video rendering method. May reduce CPU load and increase smoothness.
-#alternative-rendering = false
 
 # Run script or app on phone connected and disconnected. 
 # This script/app should be fast, otherwise it will block system. 

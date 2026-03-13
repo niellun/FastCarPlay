@@ -30,6 +30,7 @@ Connector::Connector(uint16_t videoPadding)
 Connector::~Connector()
 {
     _active = false;
+    _queue.notify();
 
     if (_write_thread.joinable())
         _write_thread.join();
@@ -69,6 +70,7 @@ void Connector::stop()
         return;
 
     _active = false;
+    _queue.notify();
 
     state(PROTOCOL_STATUS_INITIALISING);
 
@@ -181,7 +183,15 @@ bool Connector::linkFail(int status, const char *msg)
     return true;
 }
 
-int Connector::send(int cmd, bool encrypt, uint8_t *data, uint32_t size)
+bool Connector::send(std::unique_ptr<Command> packet)
+{
+    if (!_connected || !packet)
+        return false;
+
+    return _queue.pushDiscard(std::move(packet));
+}
+
+int Connector::write(int cmd, bool encrypt, uint8_t *data, uint32_t size)
 {
     if (!_connected)
         return 0;
@@ -380,9 +390,6 @@ void Connector::readLoop()
 
 void Connector::writeLoop()
 {
-    std::mutex mtx;
-    std::condition_variable cv;
-
     // Set thread name
     setThreadName("protocol-writer");
     state(PROTOCOL_STATUS_LINKING);
@@ -400,10 +407,18 @@ void Connector::writeLoop()
             state(PROTOCOL_STATUS_ONLINE);
             while (_connected && _active)
             {
-                send(170);
-                std::unique_lock<std::mutex> lock(mtx);
-                cv.wait_for(lock, std::chrono::seconds(2), [&]()
-                            { return !_active.load(); });
+                std::unique_ptr<Command> message = _queue.pop();
+                if (!message)
+                {
+                    if (!_queue.waitFor(_active, 2000))
+                        break;
+                    message = _queue.pop();
+                }
+
+                if (message)
+                    write(message->command, message->encryption, message->data, message->length);
+                else
+                    write(CMD_HEARTBEAT, false, nullptr, 0);
             }
 
             if (_active)
@@ -412,11 +427,11 @@ void Connector::writeLoop()
                 onDevice(false);
             }
 
+            _queue.clear();
+
             if (_read_thread.joinable())
                 _read_thread.join();
         }
-        std::unique_lock<std::mutex> lock(mtx);
-        cv.wait_for(lock, std::chrono::seconds(1), [&]()
-                    { return !_active.load(); });
+        _queue.waitFor(_active, 1000);
     }
 }

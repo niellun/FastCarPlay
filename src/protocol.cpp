@@ -15,7 +15,6 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t paddi
       _width(width),
       _height(height),
       _fps(fps),
-      _keySent(false),
       _phoneConnected(false)
 {
 }
@@ -35,20 +34,6 @@ void Protocol::start(uint32_t evtStatus, uint32_t evtPhone)
 void Protocol::stop()
 {
     Connector::stop();
-}
-
-void Protocol::sendInit(int width, int height, int fps)
-{
-    uint8_t buf[28];
-    write_uint32_le(&buf[0], width);
-    write_uint32_le(&buf[4], height);
-    write_uint32_le(&buf[8], fps);
-    write_uint32_le(&buf[12], 5);
-    write_uint32_le(&buf[16], 49152);
-    write_uint32_le(&buf[20], 2);
-    write_uint32_le(&buf[24], 2);
-
-    send(CMD_OPEN, true, buf, 28);
 }
 
 void Protocol::sendConfig()
@@ -91,171 +76,25 @@ void Protocol::sendConfig()
 
     std::cout << "[Protocol] Request android image " << width << "x" << height << std::endl;
 
-    char buffer[512];
-    snprintf(buffer, sizeof(buffer),
-             "{\"syncTime\":%d,\"mediaDelay\":%d,\"drivePosition\":%d,"
-             "\"androidAutoSizeW\":%d,\"androidAutoSizeH\":%d,\"HiCarConnectMode\":0,"
-             "\"GNSSCapability\":7,\"DashboardInfo\":1,\"UseBTPhone\":0}",
-             syncTime, Settings::mediaDelay.value, drivePosition, width, height);
+    send(Command::String(
+        CMD_JSON_CONTROL,
+        "{\"syncTime\":%d,\"mediaDelay\":%d,\"drivePosition\":%d,"
+        "\"androidAutoSizeW\":%d,\"androidAutoSizeH\":%d,\"HiCarConnectMode\":0,"
+        "\"GNSSCapability\":7,\"DashboardInfo\":1,\"UseBTPhone\":0}",
+        syncTime, Settings::mediaDelay.value, drivePosition, width, height));
 
-    sendString(CMD_JSON_CONTROL, buffer);
+    send(Command::String(CMD_DAYNIGHT, "{\"DayNightMode\":%d}", nightMode));
 
-    snprintf(buffer, sizeof(buffer), "{\"DayNightMode\":%d}", nightMode);
-    sendString(CMD_DAYNIGHT, buffer);
+    send(Command::File("/tmp/night_mode", nightMode));
+    send(Command::File("/tmp/charge_mode", Settings::weakCharge ? 0 : 2)); // Weak charge 0, other 2
+    send(Command::File("/etc/box_name", "CarPlay"));
+    send(Command::File("/tmp/hand_drive_mode", drivePosition));
 
-    sendFile("/tmp/night_mode", nightMode);
-    sendFile("/tmp/charge_mode", Settings::weakCharge ? 0 : 2); // Weak charge 0, other 2
-    sendFile("/etc/box_name", "CarPlay");
-    sendFile("/tmp/hand_drive_mode", drivePosition);
-
-    sendInt(CMD_CONTROL, mic);
-    sendInt(CMD_CONTROL, Settings::wifi5 ? 25 : 24);
-    sendInt(CMD_CONTROL, Settings::bluetoothAudio ? 22 : 23);
+    send(Command::Control(mic));
+    send(Command::Control(Settings::wifi5 ? 25 : 24));
+    send(Command::Control(Settings::bluetoothAudio ? 22 : 23));
     if (Settings::autoconnect)
-        sendInt(CMD_CONTROL, 1002);
-}
-
-bool Protocol::checkKey()
-{
-    bool result = _keySent;
-    _keySent = false;
-    return result;
-}
-
-void Protocol::sendKey(int key)
-{
-    sendInt(CMD_CONTROL, key, false);
-    _keySent = true;
-}
-
-void Protocol::requestKeyframe()
-{
-    sendInt(CMD_CONTROL, BTN_SCREEN_REFRESH, false);
-}
-
-void Protocol::sendFile(const char *filename, const char *value)
-{
-    uint32_t len = strlen(value);
-    if (len > 16)
-    {
-        throw std::invalid_argument("String too long (max 16 bytes)");
-    }
-
-    // note: we send only the ASCII bytes, no trailing '\0'
-    sendFile(filename,
-             reinterpret_cast<const uint8_t *>(value),
-             static_cast<uint32_t>(len));
-}
-
-// overload for a single 32‑bit integer
-void Protocol::sendFile(const char *filename, int value)
-{
-    uint8_t buf[4];
-    write_uint32_le(buf, value);
-    sendFile(filename, buf, 4);
-}
-
-void Protocol::sendClick(float x, float y, bool down)
-{
-    uint8_t buf[16];
-    write_uint32_le(buf, down ? 14 : 16);
-    write_uint32_le(buf + 4, int(10000 * x));
-    write_uint32_le(buf + 8, int(10000 * y));
-    write_uint32_le(buf + 12, 0);
-    send(CMD_TOUCH, false, buf, 16);
-}
-
-void Protocol::sendMultiTouch(const Multitouch &touches)
-{
-    int count = touches.size();
-    if (count == 0)
-        return;
-
-    uint8_t buf[MUTLITOUCH_MAX_TOUCH * sizeof(Multitouch::Touch)];
-    uint8_t *p = buf;
-
-    for (int i = 0; i < count; ++i)
-    {
-        const Multitouch::Touch &t = touches[i];
-        write_float_le(p + 0, t.x);
-        write_float_le(p + 4, t.y);
-        write_uint32_le(p + 8, static_cast<uint32_t>(t.state));
-        write_uint32_le(p + 12, static_cast<uint32_t>(t.id));
-        p += 16;
-    }
-
-    send(CMD_MULTI_TOUCH, false, buf, 16 * count);
-}
-
-void Protocol::sendMove(float dx, float dy)
-{
-    uint8_t buf[16];
-    write_uint32_le(buf, 15);
-    write_uint32_le(buf + 4, int(10000 * dx));
-    write_uint32_le(buf + 8, int(10000 * dy));
-    write_uint32_le(buf + 12, 0);
-    send(CMD_TOUCH, false, buf, 16);
-}
-
-void Protocol::sendAudio(uint8_t *data, uint32_t length)
-{
-    write_uint32_le(data, 5);
-    write_uint32_le(data + 4, 0);
-    write_uint32_le(data + 8, 3);
-    send(CMD_AUDIO_DATA, false, data, length);
-}
-
-void Protocol::sendFile(const char *filename, const uint8_t *data, uint32_t length)
-{
-    // filename is assumed null‑terminated, so strlen + 1 to include the '\0'
-    uint32_t fn_len = strlen(filename) + 1;
-
-    // Total buffer size: 4 (fn_len) + fn_len + 4 (content_len) + content_len
-    uint32_t total = 4 + fn_len + 4 + length;
-    std::vector<uint8_t> result(total);
-    uint8_t *buf = result.data();
-
-    // 1) filename length (LE)
-    write_uint32_le(buf, fn_len);
-    buf += 4;
-
-    // 2) filename bytes (including the '\0')
-    std::memcpy(buf, filename, fn_len);
-    buf += fn_len;
-
-    // 3) content length (LE)
-    write_uint32_le(buf, length);
-    buf += 4;
-
-    // 4) content bytes
-    std::memcpy(buf, data, length);
-
-    send(CMD_SEND_FILE, true, result.data(), total);
-}
-
-void Protocol::sendInt(uint32_t cmd, uint32_t value, bool encryption)
-{
-    uint8_t buf[4];
-    write_uint32_le(buf, value);
-    send(cmd, encryption, buf, 4);
-}
-
-void Protocol::sendString(uint32_t cmd, char *str, bool encryption)
-{
-    uint32_t total = strlen(str);
-    send(cmd, true, (uint8_t *)str, total);
-}
-
-void Protocol::sendEncryption()
-{
-    if (!_cipher)
-    {
-        std::cout << "[Protocol] Can't enable encryption: cypher is not initalised" << std::endl;
-        return;
-    }
-    uint8_t buf[4];
-    write_uint32_le(buf, _cipher->Seed());
-    send(CMD_ENCRYPTION, false, buf, 4);
+        send(Command::Control(1002));
 }
 
 void Protocol::onStatus(uint8_t status)
@@ -269,11 +108,16 @@ void Protocol::onDevice(bool connected)
     if (connected)
     {
         if (Settings::encryption)
-            sendEncryption();
+        {
+            if (_cipher)
+                send(Command::Encryption(_cipher->Seed()));
+            else
+                std::cout << "[Protocol] Can't enable encryption: cypher is not initalised" << std::endl;
+        }
         if (Settings::dpi > 0)
-            sendFile("/tmp/screen_dpi", Settings::dpi);
-        sendFile("/etc/android_work_mode", 1);
-        sendInit(_width, _height, _fps);
+            send(Command::File("/tmp/screen_dpi", Settings::dpi));
+        send(Command::File("/etc/android_work_mode", 1));
+        send(Command::Init(_width, _height, _fps));
         sendConfig();
     }
     else

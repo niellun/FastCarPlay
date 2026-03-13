@@ -270,7 +270,7 @@ bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
             int key = processKey(e.key.keysym);
             if (key > 0)
             {
-                protocol.sendKey(key);
+                protocol.send(Command::Control(key));
                 result = true;
             }
             break;
@@ -279,7 +279,7 @@ bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
         {
             if (e.key.keysym.sym == Settings::keyEnter)
             {
-                protocol.sendKey(Settings::keyEnterUp.key);
+                protocol.send(Command::Control(Settings::keyEnterUp.key));
                 result = true;
             }
             break;
@@ -290,11 +290,11 @@ bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
     if (_state.frameRendered && (downX >= 0 || upX >= 0 || motionX >= 0))
     {
         if (downX >= 0)
-            protocol.sendClick(renderer.xScale * downX / _width, renderer.yScale * downY / _height, true);
+            protocol.send(Command::Click(renderer.xScale * downX / _width, renderer.yScale * downY / _height, true));
         if (motionX >= 0)
-            protocol.sendMove(renderer.xScale * motionX / _width, renderer.yScale * motionY / _height);
+            protocol.send(Command::Move(renderer.xScale * motionX / _width, renderer.yScale * motionY / _height));
         if (upX >= 0)
-            protocol.sendClick(renderer.xScale * upX / _width, renderer.yScale * upY / _height, false);
+            protocol.send(Command::Click(renderer.xScale * upX / _width, renderer.yScale * upY / _height, false));
     }
 
     return result;
@@ -358,7 +358,7 @@ void Application::loop()
             {
                 if (latestFrameid == requestFrameId)
                 {
-                    protocol.requestKeyframe();
+                    protocol.send(Command::Control(BTN_SCREEN_REFRESH));
                     _state.requestFrame = 1;
                     requestFrameId = latestFrameid;
                 }

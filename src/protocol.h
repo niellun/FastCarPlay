@@ -4,12 +4,11 @@
 #include "struct/atomic_queue.h"
 #include "struct/message.h"
 #include "struct/multitouch.h"
-#include "helper/iaudio_sender.h"
 #include "settings.h"
 #include "connector.h"
 #include "recorder.h"
 
-class Protocol : private Connector, public IAudioSender
+class Protocol : public Connector
 {
 
 public:
@@ -22,27 +21,11 @@ public:
     void start(uint32_t evtStatus, uint32_t evtPhone);
     void stop();
 
-
-    bool checkKey();
-    void sendKey(int key);
-    void requestKeyframe();
-    void sendFile(const char *filename, const uint8_t *data, uint32_t length);
-    void sendFile(const char *filename, const char *value);
-    void sendFile(const char *filename, int value);
-    void sendClick(float x, float y, bool down);
-    void sendMultiTouch(const Multitouch &touches);
-    void sendMove(float dx, float dy);
-    void sendAudio(uint8_t *data, uint32_t length) override;
-
     AtomicQueue<Message> videoData;
     AtomicQueue<Message> audioStreamMain;
     AtomicQueue<Message> audioStreamAux;
 
 private:
-    void sendInt(uint32_t cmd, uint32_t value, bool encryption = true);
-    void sendString(uint32_t cmd, char *str, bool encryption = true);
-    void sendEncryption();
-    void sendInit(int width, int height, int fps);
     void sendConfig();
 
     void onStatus(uint8_t status) override;
@@ -57,7 +40,6 @@ private:
     uint16_t _width;
     uint16_t _height;
     uint16_t _fps;
-    bool _keySent;
     bool _phoneConnected;
 
     uint32_t _evtStatusId = (uint32_t)-1;

@@ -82,6 +82,14 @@ public:
         return waitFlag.load();
     }
 
+    bool waitFor(atomic<bool> &waitFlag, uint32_t timeoutMs, uint8_t count = 0)
+    {
+        unique_lock<std::mutex> lock(_mtx);
+        _lock.wait_for(lock, std::chrono::milliseconds(timeoutMs), [&]
+                       { return _count > count || !waitFlag.load(); });
+        return waitFlag.load();
+    }
+
     void clear()
     {
         _data = std::make_unique<std::unique_ptr<T>[]>(_size);

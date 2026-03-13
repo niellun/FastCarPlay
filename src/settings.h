@@ -41,8 +41,9 @@ public:
     static inline Setting<bool> hwDecode{"hw-decode", true};
     static inline Setting<int> forceRedraw{"force-redraw", 0};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
+    static inline Setting<std::string> renderDriver{"renderer-driver", ""};    
+    static inline Setting<bool> alternativeRendering{"alternative-rendering", false};    
     static inline Setting<bool> fastScale{"fast-render-scale", false};
-    static inline Setting<bool> alternativeRendering{"alternative-rendering", false};
     static inline Setting<int> videoQueue{"video-buffer-size", 32};
     static inline Setting<int> audioQueue{"audio-buffer-size", 16};
     static inline Setting<int> audioDelay{"audio-buffer-wait", 2};
@@ -50,7 +51,7 @@ public:
     static inline Setting<float> audioFade{"audio-fade", 0.3};
     static inline Setting<int> audioBuffer{"audio-buffer-samples", 2048};
     static inline Setting<std::string> audioDriver{"audio-driver", ""};
-    static inline Setting<std::string> renderDriver{"renderer-driver", "auto"};
+
     static inline Setting<std::string> onConnect{"on-connect-script", ""};
     static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};
 

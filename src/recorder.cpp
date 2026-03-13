@@ -6,6 +6,7 @@
 #include "helper/protocol_const.h"
 #include "helper/functions.h"
 #include "settings.h"
+#include "struct/command.h"
 
 
 Recorder::Recorder(uint16_t buffSize)
@@ -20,7 +21,7 @@ Recorder::~Recorder()
         _thread.join();
 }
 
-void Recorder::start(IAudioSender *sender)
+void Recorder::start(ISender *sender)
 {
     if (_active)
         return;
@@ -78,7 +79,7 @@ void Recorder::runner()
     {
         std::unique_ptr<AudioChunk> buffer = _data.pop();
         if (buffer && _sender)
-            _sender->sendAudio(buffer.get()->data, buffer.get()->size);
+            _sender->send(Command::Audio(std::move(buffer)));
         else if (_active)
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
