@@ -334,7 +334,6 @@ void Application::loop()
     AVFrame *frame = nullptr;
     uint32_t frameid = 0;
     uint32_t latestFrameid = 0;
-    uint32_t requestFrameId = 0;
     uint32_t frameTargetTime = Settings::fps > 0 ? 1000 / Settings::fps : 1000;
     int frameDelay = 0;
     while (_active)
@@ -354,16 +353,15 @@ void Application::loop()
                 videoBuffer.consume();
             }
 
-            if (_state.requestFrame > 0 && Settings::forceRedraw > 0 && ++_state.requestFrame > Settings::forceRedraw)
+            if (_state.requestFrame > 0 && Settings::forceRedraw > 0)
             {
-                if (latestFrameid == requestFrameId)
+                if (++_state.requestFrame % Settings::forceRedraw == 0)
                 {
+                    std::cout << "[App] Request screen update" << std::endl;
                     protocol.send(Command::Control(BTN_SCREEN_REFRESH));
-                    _state.requestFrame = 1;
-                    requestFrameId = latestFrameid;
+                    if (_state.requestFrame >= Settings::forceRedraw * 3)
+                        _state.requestFrame = 0;
                 }
-                else
-                    _state.requestFrame = 0;
             }
         }
 
@@ -380,7 +378,6 @@ void Application::loop()
             if (processFrameEvents(protocol, interface) && Settings::forceRedraw > 0)
             {
                 _state.requestFrame = 1;
-                requestFrameId = latestFrameid;
             }
         }
 
@@ -394,8 +391,8 @@ void Application::loop()
         if (_active && !Settings::vsync)
         {
             Uint32 frameEnd = SDL_GetTicks();
-            frameDelay = frameTargetTime - (frameEnd - frameStart);            
-            if(latestFrameid > 0 && latestFrameid != videoBuffer.latestId())
+            frameDelay = frameTargetTime - (frameEnd - frameStart);
+            if (latestFrameid > 0 && latestFrameid != videoBuffer.latestId())
             {
                 SDL_Delay(1);
                 frameStart = frameEnd;

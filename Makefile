@@ -33,7 +33,7 @@ debug: prepare
 
 release: BUILD_TYPE := release
 release: CXXFLAGS := -O3 -ffast-math -march=native -fno-plt -fno-rtti -flto -fdata-sections -ffunction-sections -DNDEBUG
-release: LDFLAGS += -O3 -ffast-math -march=native -Wl, -flto
+release: LDFLAGS += -O3 -ffast-math -march=native -Wl,--gc-sections -flto
 release: TARGET := $(TARGET_NAME)
 release: prepare
 
