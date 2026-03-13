@@ -4,6 +4,8 @@
 extern "C"
 {
 #include <libavcodec/avcodec.h>
+#include <libavutil/hwcontext.h>
+#include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 }
 
@@ -28,11 +30,16 @@ public:
 
 private:
     void runner();
-    void loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame);
-    static AVCodecContext *load_codec(AVCodecID codec_id);
+    void loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame, AVFrame *transfer);
+    AVCodecContext *load_codec(AVCodecID codec_id);
+    int setupHardwareContext(AVCodecContext *context, const AVCodec *codec);
+    int transferFrame(AVCodecContext *context, AVFrame *src, AVFrame *dst);
+    static enum AVPixelFormat getHardwareFormat(AVCodecContext *context, const enum AVPixelFormat *formats);
 
     std::thread _thread;
-    AVCodecContext* _context; 
+    AVCodecContext* _context;
+    AVBufferRef *_hwDevice = nullptr;
+    AVPixelFormat _hwPixelFormat = AV_PIX_FMT_NONE;
     AVCodecID _codecId;
     Error _status;
 
