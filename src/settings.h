@@ -42,14 +42,16 @@ public:
     static inline Setting<int> forceRedraw{"force-redraw", 0};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<std::string> renderDriver{"renderer-driver", ""};    
-    static inline Setting<bool> alternativeRendering{"alternative-rendering", false};    
+    static inline Setting<bool> alternativeRendering{"alternative-rendering", true};    
     static inline Setting<bool> fastScale{"fast-render-scale", false};
-    static inline Setting<int> videoQueue{"video-buffer-size", 32};
-    static inline Setting<int> audioQueue{"audio-buffer-size", 16};
+    static inline Setting<int> usbQueue{"async-usb-calls", 8};
+    static inline Setting<int> usbBufferSize{"usb-buffer-size", 131072};        
+    static inline Setting<int> videoQueue{"video-buffer-size", 64};
+    static inline Setting<int> audioQueue{"audio-buffer-size", 64};
     static inline Setting<int> audioDelay{"audio-buffer-wait", 2};
-    static inline Setting<int> audioDelayCall{"audio-buffer-wait-call", 8};
+    static inline Setting<int> audioDelayCall{"audio-buffer-wait-call", 6};
     static inline Setting<float> audioFade{"audio-fade", 0.3};
-    static inline Setting<int> audioBuffer{"audio-buffer-samples", 2048};
+    static inline Setting<int> audioBuffer{"audio-buffer-samples", 512};
     static inline Setting<std::string> audioDriver{"audio-driver", ""};
 
     static inline Setting<std::string> onConnect{"on-connect-script", ""};
@@ -83,7 +85,7 @@ public:
     // Debug section
     static inline Setting<int> protocolDebug{"protocol-debug", 0};
     static inline Setting<bool> codecLowDelay{"decode-low-delay", true};
-    static inline Setting<bool> codecFast{"decode-fast", false};
+    static inline Setting<bool> codecFast{"decode-fast", true};
 
     static bool load(const std::string &filename);
     static void print();

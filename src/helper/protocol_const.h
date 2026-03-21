@@ -58,9 +58,10 @@
 #define BTN_300 300
 #define BTN_301 301
 
-
 #define AUDIO_BUFFER_SIZE 2560
 #define AUDIO_BUFFER_OFFSET 12
+
+#define OFFSET_AUDIO_FORMAT 0
 
 struct ProtocolCmdEntry
 {

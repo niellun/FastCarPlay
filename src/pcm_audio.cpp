@@ -1,5 +1,6 @@
 #include "pcm_audio.h"
 #include "helper/functions.h"
+#include "helper/protocol_const.h"
 #include "settings.h"
 
 // Add sample size (buffer size in samples) to ChannelConfig

@@ -9,8 +9,7 @@
 #include "helper/functions.h"
 #include "settings.h"
 
-Connector::Connector(uint16_t videoPadding)
-    : _videoPadding(videoPadding)
+Connector::Connector()
 {
     try
     {
@@ -25,21 +24,57 @@ Connector::Connector(uint16_t videoPadding)
     int result = libusb_init(&_context);
     if (result < 0)
         throw std::runtime_error(std::string("Can't initialise USB: ") + libusb_error_name(result));
+
+    _usbTransfers = Settings::usbQueue;
+    if(_usbTransfers > MAX_USB_REQUESTS)
+        _usbTransfers = MAX_USB_REQUESTS;
+
+    for (int i = 0; i < _usbTransfers; i++)
+    {
+        _usbTransfer[i] = libusb_alloc_transfer(0);
+        uint8_t *buf = static_cast<uint8_t *>(malloc(Settings::usbBufferSize));
+        libusb_fill_bulk_transfer(_usbTransfer[i], _device, _endpoint_in, buf, Settings::usbBufferSize, Connector::onUsbRead, this, READ_TIMEOUT);
+    }
 }
 
 Connector::~Connector()
 {
     _active = false;
     _queue.notify();
+    libusb_interrupt_event_handler(_context);
 
     if (_write_thread.joinable())
         _write_thread.join();
+
+    if (_read_thread.joinable())
+        _read_thread.join();
 
     if (_cipher)
     {
         delete _cipher;
         _cipher = nullptr;
     }
+
+    for (int i = 0; i < _usbTransfers; i++)
+    {
+        if (_usbTransfer[i])
+        {
+            timeval timeout{0, 100000};            
+            libusb_cancel_transfer(_usbTransfer[i]);
+            libusb_handle_events_timeout_completed(_context, &timeout, nullptr);            
+        }
+    }
+
+    for (int i = 0; i < _usbTransfers; i++)
+    {
+        if (_usbTransfer[i])
+        {
+            if (_usbTransfer[i]->buffer)
+                free(_usbTransfer[i]->buffer);
+            libusb_free_transfer(_usbTransfer[i]);
+            _usbTransfer[i] = nullptr;
+        }
+    }    
 
     if (_device)
     {
@@ -71,11 +106,15 @@ void Connector::stop()
 
     _active = false;
     _queue.notify();
+    libusb_interrupt_event_handler(_context);
 
     state(PROTOCOL_STATUS_INITIALISING);
 
     if (_write_thread.joinable())
         _write_thread.join();
+
+    if (_read_thread.joinable())
+        _read_thread.join();        
 }
 
 bool Connector::connect(uint16_t vendor_id, uint16_t product_id)
@@ -138,7 +177,7 @@ void Connector::release()
     }
 }
 
-bool Connector::nextState(u_int8_t state)
+bool Connector::state(u_int8_t state)
 {
     if (state == _state)
         return false;
@@ -154,6 +193,7 @@ bool Connector::nextState(u_int8_t state)
         _nodeviceCount = 0;
         _failCount = 0;
         _state = state;
+        onStatus(state);
         return true;
     }
 
@@ -161,16 +201,11 @@ bool Connector::nextState(u_int8_t state)
     {
         _failCount = 0;
         _state = state;
+        onStatus(state);
         return true;
     }
 
     return false;
-}
-
-void Connector::state(u_int8_t state)
-{
-    if (nextState(state))
-        onStatus(state);
 }
 
 bool Connector::linkFail(int status, const char *msg)
@@ -181,6 +216,14 @@ bool Connector::linkFail(int status, const char *msg)
     std::cout << "[Connection] " << msg << ": " << libusb_error_name(status) << std::endl;
     state(PROTOCOL_STATUS_ERROR);
     return true;
+}
+
+void Connector::onDisconnect()
+{
+    if (!_connected)
+        return;
+    std::cout << "[Connection] Device disconnected" << std::endl;
+    _connected = false;
 }
 
 bool Connector::send(std::unique_ptr<Command> packet)
@@ -323,68 +366,50 @@ void Connector::printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool 
     std::cout << oss.str() << std::endl;
 }
 
+void Connector::onUsbRead(libusb_transfer *transfer)
+{
+    Connector *c = static_cast<Connector *>(transfer->user_data);
+
+    if (!c->_active)
+        return;
+
+    if (transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
+    {
+        c->onDisconnect();
+        return;
+    }
+
+    if (c->_active && transfer->status == LIBUSB_TRANSFER_COMPLETED && transfer->actual_length > 0)
+        c->onData(transfer->buffer, transfer->actual_length);
+
+    if (c->_active && (libusb_submit_transfer(transfer) != LIBUSB_SUCCESS))
+    {
+        std::cout << "[Connection] USB transfer re-submit failed" << std::endl;
+        c->onDisconnect();
+    }
+}
+
 void Connector::readLoop()
 {
-    Header header;
-    int transferred = 0;
-    uint8_t *data = nullptr;
-
-    // Set thread name
     setThreadName("protocol-reader");
+    timeval timeout{0, 100000};
+
+    for (int i = 0; i < _usbTransfers; i++)
+    {
+        _usbTransfer[i]->dev_handle = _device;
+        _usbTransfer[i]->endpoint = _endpoint_in;
+        int status = libusb_submit_transfer(_usbTransfer[i]);
+        if (status != LIBUSB_SUCCESS)
+        {
+            std::cout << "[Connection] USB transfer submit " << i << " failed: " << status << std::endl;
+            onDisconnect();
+            return;
+        }
+    }
+
     while (_active && _connected)
     {
-        int result = libusb_bulk_transfer(_device, _endpoint_in, reinterpret_cast<uint8_t *>(&header), sizeof(Header), &transferred, READ_TIMEOUT);
-
-        if (result == LIBUSB_ERROR_NO_DEVICE)
-        {
-            std::cout << "[Connection] Device disconnected" << std::endl;
-            _connected = false;
-            continue;
-        }
-
-        if (result != LIBUSB_SUCCESS || transferred != sizeof(Header))
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            continue;
-        }
-
-        int padding = 0;
-        if (header.type == 6)
-            padding = _videoPadding;
-
-        if (header.length > 0)
-        {
-            data = (uint8_t *)malloc(header.length + padding);
-            if (!data)
-                continue;
-            libusb_bulk_transfer(_device, _endpoint_in, data, header.length, &transferred, READ_TIMEOUT);
-        }
-
-        if (header.magic == MAGIC_ENC)
-        {
-            if (!_cipher)
-            {
-                std::cout << "[Connection] Received encrypted command " << header.type << " but cipher is not initialised" << std::endl;
-                if (data)
-                    free(data);
-                continue;
-            }
-            if (!_cipher->Decrypt(data, header.length))
-            {
-                std::cout << "[Connection] Can't decrypt command " << header.type << std::endl;
-                if (data)
-                    free(data);
-                continue;
-            }
-        }
-
-#ifdef PROTOCOL_DEBUG
-        printMessage(header.type, header.length, data, header.magic == MAGIC_ENC, false);
-#endif
-
-        if (padding > 0)
-            std::fill(data + header.length, data + header.length + padding, 0);
-        onData(header.type, header.length, data);
+        libusb_handle_events_timeout_completed(_context, &timeout, nullptr);
     }
 }
 

@@ -3,8 +3,6 @@
 
 #include "struct/atomic_queue.h"
 #include "struct/message.h"
-#include "struct/multitouch.h"
-#include "settings.h"
 #include "connector.h"
 #include "recorder.h"
 
@@ -12,7 +10,7 @@ class Protocol : public Connector
 {
 
 public:
-    Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t padding);
+    Protocol(uint16_t width, uint16_t height, uint16_t fps);
     ~Protocol() override;
 
     Protocol(const Protocol &) = delete;
@@ -30,11 +28,11 @@ private:
 
     void onStatus(uint8_t status) override;
     void onDevice(bool connected) override;
-    void onControl(int cmd);
-    void onData(uint32_t cmd, uint32_t length, uint8_t *data) override;
-    void onPhone(bool connected);
+    void onData(uint8_t *data, uint32_t length) override;
 
-    static const char *cmdString(int cmd);
+    void dispatch(std::unique_ptr<Message> msg);
+    void onControl(int cmd);
+    void onPhone(bool connected);
 
     Recorder _recorder;
     uint16_t _width;
@@ -44,6 +42,8 @@ private:
 
     uint32_t _evtStatusId = (uint32_t)-1;
     uint32_t _evtPhoneId = (uint32_t)-1;
+
+    std::unique_ptr<Message> _message;
 };
 
 #endif /* SRC_PROTOCOL */

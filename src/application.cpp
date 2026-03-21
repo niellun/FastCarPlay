@@ -320,7 +320,7 @@ void Application::loop()
     interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN);
 
     VideoBuffer videoBuffer;
-    Protocol protocol(Settings::width, Settings::height, Settings::sourceFps, AV_INPUT_BUFFER_PADDING_SIZE);
+    Protocol protocol(Settings::width, Settings::height, Settings::sourceFps);
     Decoder decoder;
     PcmAudio audioMain("Main"), audioAux("Aux");
 

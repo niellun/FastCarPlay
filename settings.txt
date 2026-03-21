@@ -114,19 +114,23 @@
 #renderer-driver = 
 
 # Use alternative video rendering method. May reduce CPU load and increase smoothness.
-#alternative-rendering = false
+#alternative-rendering = true
 
 # Select faster method of scaling image to window size (nearest) or better quality (linear)
 #fast-render-scale = false
 
+# USB reading number of async requests and buffer size
+#async-usb-calls = 8
+#usb-buffer-size = 131072       
+
 # Size of video and audio buffers. Increase if you see artifacts
-#video-buffer-size = 32
-#audio-buffer-size = 32
+#video-buffer-size = 64
+#audio-buffer-size = 64
 
 # Audio delay for music and calls. Fill the buffer to this value before start playing. 
 # Increase if you hear audio artifacts or tearing. Should be less than audio-buffer-size 
 #audio-buffer-wait = 2
-#audio-buffer-wait-call = 8
+#audio-buffer-wait-call = 6
 
 # Reduce volume of main audio source when there is higher priority audio stream.
 # This will reduce volume of the music if there is navigation instructions
@@ -137,7 +141,7 @@
 # This controls the size of the audio buffer used by the audio device.
 # The buffer time is ~ 1/10 buffer size in ms, depending on sample rate e.g. 2048 = ~200ms 
 # Preferably use power of 2 for the values or check your audio driver documentation
-#audio-buffer-samples = 2048
+#audio-buffer-samples = 512
 
 # Force application to use following audio driver as audio output, if empty use default driver
 # See SDL documentation for options. Some of them are
@@ -219,4 +223,4 @@
 
 # Enable FFMPEG AV_CODEC_FLAG2_FAST for HW decoder.
 # Allow non spec compliant speedup tricks.
-#decode-fast = false
+#decode-fast = true

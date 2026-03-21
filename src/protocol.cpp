@@ -1,14 +1,14 @@
 #include "protocol.h"
 #include "helper/protocol_const.h"
 #include "helper/functions.h"
+#include "settings.h"
 
-#include <cstring>
-#include <iomanip>
-#include <cctype>
+#include <algorithm>
+#include <ctime>
+#include <iostream>
 
-Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t padding)
-    : Connector(padding),
-      videoData(Settings::videoQueue),
+Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps)
+    : videoData(Settings::videoQueue),
       audioStreamMain(Settings::audioQueue),
       audioStreamAux(Settings::audioQueue),
       _recorder(Settings::audioQueue),
@@ -17,6 +17,7 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps, uint16_t paddi
       _fps(fps),
       _phoneConnected(false)
 {
+
 }
 
 Protocol::~Protocol()
@@ -161,19 +162,52 @@ void Protocol::onControl(int cmd)
     }
 }
 
-void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
+void Protocol::onData(uint8_t *data, uint32_t length)
 {
-    bool dispose = true;
-    switch (cmd)
+    uint32_t offset = 0;
+    while (offset < length)
+    {
+        if (_message == nullptr)
+            _message = std::make_unique<Message>();
+        offset += _message->parse(data + offset, length - offset);
+
+        if (!_message->ready())
+            continue;
+
+        if (!_message->valid())
+        {
+            std::cout << "[Connection] Can't allocate message " << _message->type() << " with size " << _message->length() << std::endl;
+            _message = nullptr;
+            continue;
+        }
+
+        if (_message->encrypted() && !_message->decrypt(_cipher))
+        {
+            if (!_cipher)
+                std::cout << "[Connection] Received encrypted command " << _message->type() << " but cipher is not initialised" << std::endl;
+            else
+                std::cout << "[Connection] Can't decrypt command " << _message->type() << std::endl;
+            _message = nullptr;
+            continue;
+        }
+
+#ifdef PROTOCOL_DEBUG
+        printMessage(_message->type(), _message->length(), _message->data(), _message->encrypted(), false);
+#endif
+
+        dispatch(std::move(_message));
+        _message = nullptr;
+    }
+}
+
+void Protocol::dispatch(std::unique_ptr<Message> msg)
+{
+    switch (msg->type())
     {
 
     case CMD_CONTROL:
-        if (length == 4)
-        {
-            int cmd = 0;
-            memcpy(&cmd, data, sizeof(int));
-            onControl(cmd);
-        }
+        if (msg->length() == 4)
+            onControl(msg->getInt(0));
         break;
 
     case CMD_PLUGGED:
@@ -186,40 +220,25 @@ void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
 
     case CMD_VIDEO_DATA:
     {
-        if (length <= 20)
-            break;
-        videoData.pushDiscard(std::make_unique<Message>(data, length, 20));
-        dispose = false;
+        if(msg->setOffset(20))
+            videoData.pushDiscard(std::move(msg));
         break;
     }
     case CMD_AUDIO_DATA:
     {
-        if (length <= 16)
-        {
+        if (msg->length() <= 16)
             break;
-        }
-        int channel = 0;
-        memcpy(&channel, data + 8, sizeof(int));
+        int channel = msg->getInt(8);
+        msg->setOffset(12);
         if (channel == 1)
-        {
-            audioStreamMain.pushDiscard(std::make_unique<Message>(data, length, 12));
-            dispose = false;
-            break;
-        }
+            audioStreamMain.pushDiscard(std::move(msg));
         if (channel == 2)
-        {
-            audioStreamAux.pushDiscard(std::make_unique<Message>(data, length, 12));
-            dispose = false;
-            break;
-        }
+            audioStreamAux.pushDiscard(std::move(msg));
         break;
     }
     case CMD_ENCRYPTION:
-        if (length == 0)
+        if (msg->length() == 0)
             setEncryption(true);
         break;
     }
-
-    if (dispose && length > 0 && data)
-        free(data);
 }
