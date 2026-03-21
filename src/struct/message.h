@@ -24,7 +24,7 @@ struct Header
 class Message
 {
 public:
-    Message() : _header({0, 0, 0, 0}), _data(nullptr), _offset(0), _headerLegth(0), _dataLength(0)
+    Message() : _header({0, 0, 0, 0}), _data(nullptr), _offset(0), _headerLegth(0), _dataLength(0), _valid(false), _ready(false)
     {
     }
 
@@ -41,7 +41,7 @@ public:
     {
         uint32_t result = 0;
 
-        if (!hasHeader())
+        if (_headerLegth != sizeof(Header))
         {
             uint8_t copy = sizeof(Header) - _headerLegth;
             if (copy > data_length)
@@ -49,26 +49,45 @@ public:
             memcpy(reinterpret_cast<uint8_t *>(&_header) + _headerLegth, data, copy);
             _headerLegth += copy;
             result += copy;
-        }
 
-        if (!hasHeader() || result >= data_length || _header.length <= 0)
-            return result;
+            if (_headerLegth != sizeof(Header))
+                return result;
+
+            if ((_header.magic != MAGIC && _header.magic != MAGIC_ENC) || _header.length < 0)
+            {
+                _ready = true;
+                return 1;
+            }
+
+            if (_header.length == 0)
+            {
+                _ready = true;
+                _valid = true;
+                return result;
+            }
+        }
 
         if (_data == nullptr)
         {
             uint32_t padding = _header.type == CMD_VIDEO_DATA ? AV_INPUT_BUFFER_PADDING_SIZE : 0;
             _data = (uint8_t *)malloc(_header.length + padding);
-            if (padding > 0 && _data)
-                std::fill(_data + _header.length, _data + _header.length + padding, 0);
+            if (_data)
+            {
+                _valid = true;
+                if (padding > 0)
+                    std::fill(_data + _header.length, _data + _header.length + padding, 0);
+            }
         }
 
         uint32_t copy = _header.length - _dataLength;
         if (copy > data_length - result)
             copy = data_length - result;
-        if (_data)
+        if (_valid)
             memcpy(_data + _dataLength, data + result, copy);
         _dataLength += copy;
         result += copy;
+
+        _ready = _dataLength >= static_cast<uint32_t>(_header.length);
 
         return result;
     }
@@ -81,9 +100,9 @@ public:
         return result;
     }
 
-    bool ready() const { return _headerLegth == sizeof(Header) && (_header.length <= 0 || _dataLength >= _header.length); }
+    bool ready() const { return _ready; }
 
-    bool valid() const { return _header.length <= 0 || _data; }
+    bool valid() const { return _valid; }
 
     bool setOffset(uint32_t offset)
     {
@@ -115,6 +134,8 @@ private:
 
     u_int8_t _headerLegth;
     uint32_t _dataLength;
+    bool _valid;
+    bool _ready;
 };
 
 #endif /* SRC_STRUCT_MESSAGE */

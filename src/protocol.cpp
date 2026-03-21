@@ -4,6 +4,7 @@
 #include "settings.h"
 
 #include <algorithm>
+#include <cstring>
 #include <ctime>
 #include <iostream>
 
@@ -176,8 +177,20 @@ void Protocol::onData(uint8_t *data, uint32_t length)
 
         if (!_message->valid())
         {
-            std::cout << "[Connection] Can't allocate message " << _message->type() << " with size " << _message->length() << std::endl;
+            std::cout << "[Connection] Invalid message received" << std::endl;
             _message = nullptr;
+
+            while(true)
+            {
+                if (length - offset < sizeof(uint32_t))
+                    return;
+                uint32_t magic = 0;
+                memcpy(&magic, data + offset, sizeof(uint32_t));
+                if (magic == MAGIC || magic == MAGIC_ENC)
+                    break;
+                offset++;
+            }
+            
             continue;
         }
 
