@@ -4,7 +4,6 @@
 #include "resource/colours.h"
 #include "settings.h"
 #include "helper/protocol_const.h"
-#include <iostream>
 
 Interface::Interface(SDL_Renderer *renderer)
     : Renderer(renderer), _state(0),

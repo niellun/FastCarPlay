@@ -8,7 +8,6 @@
 #include "interface.h"
 #include "decoder.h"
 #include "pcm_audio.h"
-#include "pipe_listener.h"
 
 #define EVT_STATUS_OFFSET 0
 #define EVT_PHONE_OFFSET 1

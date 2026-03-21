@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 
 #include <cerrno>
+#include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <sys/stat.h>

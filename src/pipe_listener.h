@@ -2,10 +2,9 @@
 #define SRC_PIPE_LISTENER
 
 #include <thread>
-#include <atomic>
-#include "protocol.h"
 
-class PipeListener {
+class PipeListener
+{
 public:
     PipeListener(const char *path);
     ~PipeListener();

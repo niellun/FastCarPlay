@@ -42,7 +42,6 @@ public:
 private:
     SDL_Surface *_surface = nullptr;
     SDL_Texture *_texture = nullptr;    
-    float _aspect;
 };
 
 class Renderer

@@ -93,7 +93,7 @@ SDL_Texture *RendererText::getText(SDL_Renderer *renderer, const char *text, SDL
 }
 
 RendererImage::RendererImage(const void *img_data, int img_size)
-    : width(0), height(0), _surface(nullptr), _aspect(0)
+    : width(0), height(0), _surface(nullptr)
 {
     SDL_RWops *img_rw = SDL_RWFromConstMem(img_data, img_size);
     if (!img_rw)
@@ -130,7 +130,6 @@ SDL_Rect RendererImage::draw(SDL_Renderer *renderer, int w, int h)
         if (!_texture)
             return {0, 0, 0, 0};
         SDL_GetRendererOutputSize(renderer, &width, &height);
-        _aspect = 1.0 * height / width;
     }
 
     float scale = 1.0 * h / height;

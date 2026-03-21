@@ -3,7 +3,6 @@
 #include <stdexcept>
 #include <iostream>
 #include <iomanip>
-#include <condition_variable>
 
 #include "helper/protocol_const.h"
 #include "helper/functions.h"
@@ -167,16 +166,6 @@ bool Connector::link()
     return true;
 }
 
-void Connector::release()
-{
-    if (_device)
-    {
-        libusb_release_interface(_device, 0);
-        libusb_close(_device);
-        _device = nullptr;
-    }
-}
-
 bool Connector::state(u_int8_t state)
 {
     if (state == _state)
@@ -184,7 +173,6 @@ bool Connector::state(u_int8_t state)
 
     if (state == PROTOCOL_STATUS_ERROR && _failCount++ < 10)
     {
-        _failCount++;
         return false;
     }
 
@@ -212,7 +200,6 @@ bool Connector::linkFail(int status, const char *msg)
 {
     if (status == 0)
         return false;
-    _lastError = msg;
     std::cout << "[Connection] " << msg << ": " << libusb_error_name(status) << std::endl;
     state(PROTOCOL_STATUS_ERROR);
     return true;

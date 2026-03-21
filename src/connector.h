@@ -58,7 +58,6 @@ private:
     void onDisconnect();
     bool connect(uint16_t vendor_id, uint16_t product_id);
     bool link();
-    void release();
 
     bool state(u_int8_t state);
     bool linkFail(int status, const char *msg);
@@ -75,7 +74,6 @@ private:
     uint8_t _state;
     uint8_t _failCount;
     uint8_t _nodeviceCount;
-    std::string _lastError;
 
     std::thread _read_thread;
     std::thread _write_thread;
