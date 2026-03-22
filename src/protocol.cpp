@@ -18,7 +18,6 @@ Protocol::Protocol(uint16_t width, uint16_t height, uint16_t fps)
       _fps(fps),
       _phoneConnected(false)
 {
-
 }
 
 Protocol::~Protocol()
@@ -163,54 +162,64 @@ void Protocol::onControl(int cmd)
     }
 }
 
-void Protocol::onData(uint8_t *data, uint32_t length)
+void Protocol::onData(uint32_t cmd, uint32_t length, uint8_t *data)
 {
-    uint32_t offset = 0;
-    while (offset < length)
+    bool dispose = true;
+
+    switch (cmd)
     {
-        if (_message == nullptr)
-            _message = std::make_unique<Message>();
-        offset += _message->parse(data + offset, length - offset);
-
-        if (!_message->ready())
-            continue;
-
-        if (!_message->valid())
+    case CMD_CONTROL:
+        if (length == 4)
         {
-            std::cout << "[Connection] Invalid message received" << std::endl;
-            _message = nullptr;
+            int value = 0;
+            memcpy(&value, data, sizeof(int));
+            onControl(value);
+        }
+        break;
 
-            while(true)
+    case CMD_PLUGGED:
+        onPhone(true);
+        break;
+
+    case CMD_UNPLUGGED:
+        onPhone(false);
+        break;
+
+    case CMD_VIDEO_DATA:
+        if (length > 20)
+        {
+            videoData.pushDiscard(std::make_unique<Message>(data, length, 20));
+            dispose = false;
+        }
+        break;
+
+    case CMD_AUDIO_DATA:
+        if (length > 16)
+        {
+            int channel = 0;
+            memcpy(&channel, data + 8, sizeof(int));
+
+            if (channel == 1)
             {
-                if (length - offset < sizeof(uint32_t))
-                    return;
-                uint32_t magic = 0;
-                memcpy(&magic, data + offset, sizeof(uint32_t));
-                if (magic == MAGIC || magic == MAGIC_ENC)
-                    break;
-                offset++;
+                audioStreamMain.pushDiscard(std::make_unique<Message>(data, length, 12));
+                dispose = false;
             }
-            
-            continue;
+            else if (channel == 2)
+            {
+                audioStreamAux.pushDiscard(std::make_unique<Message>(data, length, 12));
+                dispose = false;
+            }
         }
+        break;
 
-        if (_message->encrypted() && !_message->decrypt(_cipher))
-        {
-            if (!_cipher)
-                std::cout << "[Connection] Received encrypted command " << _message->type() << " but cipher is not initialised" << std::endl;
-            else
-                std::cout << "[Connection] Can't decrypt command " << _message->type() << std::endl;
-            _message = nullptr;
-            continue;
-        }
-
-#ifdef PROTOCOL_DEBUG
-        printMessage(_message->type(), _message->length(), _message->data(), _message->encrypted(), false);
-#endif
-
-        dispatch(std::move(_message));
-        _message = nullptr;
+    case CMD_ENCRYPTION:
+        if (length == 0)
+            setEncryption(true);
+        break;
     }
+
+    if (dispose && data && length > 0)
+        free(data);
 }
 
 void Protocol::dispatch(std::unique_ptr<Message> msg)
@@ -233,7 +242,7 @@ void Protocol::dispatch(std::unique_ptr<Message> msg)
 
     case CMD_VIDEO_DATA:
     {
-        if(msg->setOffset(20))
+        if (msg->setOffset(20))
             videoData.pushDiscard(std::move(msg));
         break;
     }

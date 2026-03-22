@@ -9,12 +9,12 @@
 #include <string>
 
 #include "helper/isender.h"
-#include "aes_cipher.h"
 #include "struct/atomic_queue.h"
 #include "struct/command.h"
+#include "struct/usb_buffer.h"
+#include "aes_cipher.h"
 
-#define READ_TIMEOUT 10000
-#define MAX_USB_REQUESTS 64
+#define MAX_USB_REQUESTS 128
 #define COMMAND_QUEUE_SIZE 256
 #define ENCRYPTION_BASE "SkBRDy3gmrw1ieH0"
 
@@ -24,6 +24,13 @@
 #define PROTOCOL_DEBUG_OUT 3
 #define PROTOCOL_DEBUG_ALL 4
 
+class Connector;
+
+struct UsbContext {
+    Connector* owner;
+    DataSlot* slot;
+    libusb_transfer* transfer;
+};
 
 class Connector : public ISender
 {
@@ -37,7 +44,7 @@ public:
     bool send(std::unique_ptr<Command> packet) override;
 
 protected:
-    virtual void onData(uint8_t *data, uint32_t length) = 0;
+    virtual void onData(uint32_t cmd, uint32_t length, uint8_t *data) = 0;
     virtual void onStatus(u_int8_t status) = 0;
     virtual void onDevice(bool connected) = 0;
 
@@ -48,12 +55,14 @@ protected:
     static void printBytes(uint8_t *data, uint32_t length, uint16_t max);
     static const char *cmdString(int cmd);
 
-    AESCipher *_cipher = nullptr;    
+    AESCipher *_cipher = nullptr;
+    UsbBuffer _usbBuffer;
 
 private:
     static void onUsbRead(libusb_transfer *transfer);
 
     void readLoop();
+    void bufferReadLoop();
     void writeLoop();
     void onDisconnect();
     bool connect(uint16_t vendor_id, uint16_t product_id);
@@ -76,11 +85,12 @@ private:
     uint8_t _nodeviceCount;
 
     std::thread _read_thread;
+    std::thread _buffer_thread;
     std::thread _write_thread;
     std::mutex _write_mutex;
     std::atomic<bool> _active = false;
     AtomicQueue<Command> _queue{COMMAND_QUEUE_SIZE};
-    libusb_transfer *_usbTransfer[MAX_USB_REQUESTS] = {};
+    UsbContext _usbContext[MAX_USB_REQUESTS] = {};
 };
 
 #endif /* SRC_CONNECTOR */

@@ -28,6 +28,17 @@ public:
     {
     }
 
+    Message(uint8_t *data, uint32_t length, uint32_t offset)
+        : _header({0, static_cast<int32_t>(length), 0, 0}),
+          _data(data),
+          _offset(offset <= length ? offset : length),
+          _headerLegth(sizeof(Header)),
+          _dataLength(length),
+          _valid(true),
+          _ready(true)
+    {
+    }
+
     ~Message()
     {
         if (_data)

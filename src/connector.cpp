@@ -4,11 +4,14 @@
 #include <iostream>
 #include <iomanip>
 
+#include "struct/message.h"
 #include "helper/protocol_const.h"
 #include "helper/functions.h"
 #include "settings.h"
 
+
 Connector::Connector()
+    : _usbBuffer(Settings::usbQueue * 2, Settings::usbBufferSize)
 {
     try
     {
@@ -25,28 +28,18 @@ Connector::Connector()
         throw std::runtime_error(std::string("Can't initialise USB: ") + libusb_error_name(result));
 
     _usbTransfers = Settings::usbQueue;
-    if(_usbTransfers > MAX_USB_REQUESTS)
+    if (_usbTransfers > MAX_USB_REQUESTS)
         _usbTransfers = MAX_USB_REQUESTS;
 
     for (int i = 0; i < _usbTransfers; i++)
     {
-        _usbTransfer[i] = libusb_alloc_transfer(0);
-        uint8_t *buf = static_cast<uint8_t *>(malloc(Settings::usbBufferSize));
-        libusb_fill_bulk_transfer(_usbTransfer[i], _device, _endpoint_in, buf, Settings::usbBufferSize, Connector::onUsbRead, this, READ_TIMEOUT);
+        _usbContext[i].transfer = libusb_alloc_transfer(0);
     }
 }
 
 Connector::~Connector()
 {
-    _active = false;
-    _queue.notify();
-    libusb_interrupt_event_handler(_context);
-
-    if (_write_thread.joinable())
-        _write_thread.join();
-
-    if (_read_thread.joinable())
-        _read_thread.join();
+    stop();
 
     if (_cipher)
     {
@@ -56,24 +49,22 @@ Connector::~Connector()
 
     for (int i = 0; i < _usbTransfers; i++)
     {
-        if (_usbTransfer[i])
+        if (_usbContext[i].transfer)
         {
-            timeval timeout{0, 100000};            
-            libusb_cancel_transfer(_usbTransfer[i]);
-            libusb_handle_events_timeout_completed(_context, &timeout, nullptr);            
+            timeval timeout{0, 100000};
+            libusb_cancel_transfer(_usbContext[i].transfer);
+            libusb_handle_events_timeout_completed(_context, &timeout, nullptr);
         }
     }
 
     for (int i = 0; i < _usbTransfers; i++)
     {
-        if (_usbTransfer[i])
+        if (_usbContext[i].transfer)
         {
-            if (_usbTransfer[i]->buffer)
-                free(_usbTransfer[i]->buffer);
-            libusb_free_transfer(_usbTransfer[i]);
-            _usbTransfer[i] = nullptr;
+            libusb_free_transfer(_usbContext[i].transfer);
+            _usbContext[i].transfer = nullptr;
         }
-    }    
+    }
 
     if (_device)
     {
@@ -102,18 +93,12 @@ void Connector::stop()
 {
     if (!_active)
         return;
-
     _active = false;
     _queue.notify();
-    libusb_interrupt_event_handler(_context);
-
     state(PROTOCOL_STATUS_INITIALISING);
 
     if (_write_thread.joinable())
         _write_thread.join();
-
-    if (_read_thread.joinable())
-        _read_thread.join();        
 }
 
 bool Connector::connect(uint16_t vendor_id, uint16_t product_id)
@@ -355,24 +340,27 @@ void Connector::printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool 
 
 void Connector::onUsbRead(libusb_transfer *transfer)
 {
-    Connector *c = static_cast<Connector *>(transfer->user_data);
+    UsbContext *c = static_cast<UsbContext *>(transfer->user_data);
 
-    if (!c->_active)
+    if (!c->owner->_active)
         return;
 
-    if (transfer->status == LIBUSB_TRANSFER_NO_DEVICE)
+    c->slot->commit(transfer->actual_length);
+    try
     {
-        c->onDisconnect();
+        c->slot = c->owner->_usbBuffer.get();
+    }
+    catch (const std::exception &e)
+    {
+        std::cout << "[Connection] USB buffer unavailable: " << e.what() << std::endl;
+        c->owner->onDisconnect();
         return;
     }
-
-    if (c->_active && transfer->status == LIBUSB_TRANSFER_COMPLETED && transfer->actual_length > 0)
-        c->onData(transfer->buffer, transfer->actual_length);
-
-    if (c->_active && (libusb_submit_transfer(transfer) != LIBUSB_SUCCESS))
+    libusb_fill_bulk_transfer(c->transfer, c->owner->_device, c->owner->_endpoint_in, c->slot->data, c->slot->size, Connector::onUsbRead, c, 0);
+    if (c->owner->_active && (libusb_submit_transfer(c->transfer) != LIBUSB_SUCCESS))
     {
         std::cout << "[Connection] USB transfer re-submit failed" << std::endl;
-        c->onDisconnect();
+        c->owner->onDisconnect();
     }
 }
 
@@ -383,9 +371,10 @@ void Connector::readLoop()
 
     for (int i = 0; i < _usbTransfers; i++)
     {
-        _usbTransfer[i]->dev_handle = _device;
-        _usbTransfer[i]->endpoint = _endpoint_in;
-        int status = libusb_submit_transfer(_usbTransfer[i]);
+        _usbContext[i].slot = _usbBuffer.get();
+        _usbContext[i].owner = this;
+        libusb_fill_bulk_transfer(_usbContext[i].transfer, _device, _endpoint_in, _usbContext[i].slot->data, _usbContext[i].slot->size, Connector::onUsbRead, &_usbContext[i], 0);
+        int status = libusb_submit_transfer(_usbContext[i].transfer);
         if (status != LIBUSB_SUCCESS)
         {
             std::cout << "[Connection] USB transfer submit " << i << " failed: " << status << std::endl;
@@ -397,6 +386,63 @@ void Connector::readLoop()
     while (_active && _connected)
     {
         libusb_handle_events_timeout_completed(_context, &timeout, nullptr);
+    }
+}
+
+void Connector::bufferReadLoop()
+{
+    setThreadName("protocol-log");
+
+    while (_active && _connected)
+    {
+        Header header{0, 0, 0, 0};
+        uint8_t *data = nullptr;
+
+        if (!_usbBuffer.read(reinterpret_cast<uint8_t *>(&header), sizeof(Header)))
+            break;
+
+        int32_t payloadLength = static_cast<size_t>(header.length);
+        int32_t padding = header.type == CMD_VIDEO_DATA ? AV_INPUT_BUFFER_PADDING_SIZE : 0;
+
+        //std::cout << "[Connection] Chunk: cmd " << header.type << " len " << header.length << " magic " << header.magic << " queue state " << _usbBuffer.count() << std::endl;
+
+        if (payloadLength > 0)
+        {
+            data = static_cast<uint8_t *>(malloc(payloadLength + padding));
+
+            if (!_usbBuffer.read(data, payloadLength))
+            {
+                free(data);
+                break;
+            }
+        }
+
+        if (header.magic == MAGIC_ENC && payloadLength > 0)
+        {
+            if (!_cipher)
+            {
+                std::cout << "[Connection] Received encrypted buffered command " << header.type
+                          << " but cipher is not initialised" << std::endl;
+                free(data);
+                continue;
+            }
+
+            if (!_cipher->Decrypt(data, payloadLength))
+            {
+                std::cout << "[Connection] Can't decrypt buffered command " << header.type << std::endl;
+                free(data);
+                continue;
+            }
+        }
+
+#ifdef PROTOCOL_DEBUG
+        printMessage(header.type, payloadLength, data, header.magic == MAGIC_ENC, false);
+#endif
+
+        if (padding > 0 && data)
+            std::fill(data + payloadLength, data + payloadLength + padding, 0);
+
+        onData(header.type, payloadLength, data);
     }
 }
 
@@ -413,10 +459,13 @@ void Connector::writeLoop()
         {
             std::cout << "[Connection] Device connected" << std::endl;
 
+            _usbBuffer.start();
             _read_thread = std::thread(&Connector::readLoop, this);
-            onDevice(true);
+            _buffer_thread = std::thread(&Connector::bufferReadLoop, this);
 
+            onDevice(true);
             state(PROTOCOL_STATUS_ONLINE);
+
             while (_connected && _active)
             {
                 std::unique_ptr<Command> message = _queue.pop();
@@ -440,10 +489,14 @@ void Connector::writeLoop()
             }
 
             _queue.clear();
+            _usbBuffer.stop();
 
             if (_read_thread.joinable())
                 _read_thread.join();
+
+            if (_buffer_thread.joinable())
+                _buffer_thread.join();
         }
-        _queue.waitFor(_active, 1000);
+        _queue.waitFor(_active, 100);
     }
 }

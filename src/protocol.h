@@ -28,7 +28,7 @@ private:
 
     void onStatus(uint8_t status) override;
     void onDevice(bool connected) override;
-    void onData(uint8_t *data, uint32_t length) override;
+    void onData(uint32_t cmd, uint32_t length, uint8_t *data) override;
 
     void dispatch(std::unique_ptr<Message> msg);
     void onControl(int cmd);
@@ -42,8 +42,6 @@ private:
 
     uint32_t _evtStatusId = (uint32_t)-1;
     uint32_t _evtPhoneId = (uint32_t)-1;
-
-    std::unique_ptr<Message> _message;
 };
 
 #endif /* SRC_PROTOCOL */
