@@ -14,6 +14,7 @@ extern "C"
 #include "struct/atomic_queue.h"
 #include "protocol/message.h"
 
+template <class Buffer>
 class Decoder
 {
 
@@ -21,7 +22,7 @@ public:
     Decoder();
     ~Decoder();
 
-    void start(AtomicQueue<Message> *data, VideoBuffer *vb,  AVCodecID codecId);
+    void start(AtomicQueue<Message> *data, Buffer &vb, AVCodecID codecId);
     void stop();
     void flush();
 
@@ -31,13 +32,16 @@ private:
     static AVCodecContext *load_codec(AVCodecID codec_id);
 
     std::thread _thread;
-    AVCodecContext* _context; 
+    AVCodecContext* _context;
     AVCodecID _codecId;
 
     std::atomic<bool> _active = false;
 
     AtomicQueue<Message> *_data = nullptr;
-    VideoBuffer *_vb = nullptr;
+    Buffer *_vb = nullptr;
 };
+
+extern template class Decoder<VideoBuffer>;
+extern template class Decoder<VideoBufferDouble>;
 
 #endif /* SRC_DECODER */

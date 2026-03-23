@@ -39,6 +39,7 @@ public:
     static inline Setting<int> fontSize{"font-size", 30};
     static inline Setting<bool> vsync{"vsync", false};
     static inline Setting<bool> hwDecode{"hw-decode", true};
+    static inline Setting<bool> doubleBuffer{"double-buffered", true};
     static inline Setting<int> forceRedraw{"force-redraw", 0};
     static inline Setting<int> eventsSkip{"draw-skip-events", 0};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};

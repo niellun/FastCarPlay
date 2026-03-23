@@ -120,7 +120,10 @@ void Application::start(const char *title)
     }
 
     log_v("Starting");
-    loop();
+    if (Settings::doubleBuffer)
+        loop<VideoBufferDouble>();
+    else
+        loop<VideoBuffer>();
     log_v("Stopped");
 }
 
@@ -275,6 +278,7 @@ bool Application::processFrameEvents(AtomicQueue<Message> &queue, Renderer &rend
     return result;
 }
 
+template <class Buffer>
 void Application::loop()
 {
     // Prepare home screen
@@ -294,12 +298,12 @@ void Application::loop()
         SDL_ShowWindow(_window);
     interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN);
 
-    VideoBuffer videoBuffer;
+    Buffer videoBuffer;
     Connector protocol;
-    Decoder decoder;
+    Decoder<Buffer> decoder;
     PcmAudio audioMain("main"), audioAux("aux");
 
-    decoder.start(&protocol.videoStream, &videoBuffer, AV_CODEC_ID_H264);
+    decoder.start(&protocol.videoStream, videoBuffer, AV_CODEC_ID_H264);
     audioMain.start(&protocol.audioStreamMain);
     audioAux.start(&protocol.audioStreamAux, &audioMain);
     protocol.start(&_state.deviceStatus);

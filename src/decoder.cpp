@@ -5,28 +5,32 @@
 #include "common/functions.h"
 #include "settings.h"
 
-Decoder::Decoder()
+template <class Buffer>
+Decoder<Buffer>::Decoder()
     : _context(nullptr)
 {
 }
 
-Decoder::~Decoder()
+template <class Buffer>
+Decoder<Buffer>::~Decoder()
 {
     stop();
 }
 
-void Decoder::start(AtomicQueue<Message> *data, VideoBuffer *vb, AVCodecID codecId)
+template <class Buffer>
+void Decoder<Buffer>::start(AtomicQueue<Message> *data, Buffer &vb, AVCodecID codecId)
 {
     if (_active)
         stop();
 
-    _vb = vb;
+    _vb = &vb;
     _data = data;
     _codecId = codecId;
     _active = true;
     _thread = std::thread(&Decoder::runner, this);
 }
-void Decoder::stop()
+template <class Buffer>
+void Decoder<Buffer>::stop()
 {
     if (!_active)
         return;
@@ -36,14 +40,16 @@ void Decoder::stop()
         _thread.join();
 }
 
-void Decoder::flush()
+template <class Buffer>
+void Decoder<Buffer>::flush()
 {
     if (_context)
         avcodec_flush_buffers(_context);
 }
 
 // Initialize and select the best decoder (try HW first, then SW)
-AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
+template <class Buffer>
+AVCodecContext *Decoder<Buffer>::load_codec(AVCodecID codec_id)
 {
     void *iter = nullptr;
     const AVCodec *codec = nullptr;
@@ -116,7 +122,8 @@ AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
     return result;
 }
 
-void Decoder::runner()
+template <class Buffer>
+void Decoder<Buffer>::runner()
 {
     // Set thread name
     setThreadName("video-decoder");
@@ -159,7 +166,8 @@ void Decoder::runner()
     _context = nullptr;
 }
 
-void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame)
+template <class Buffer>
+void Decoder<Buffer>::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame)
 {
     uint32_t counter = 0;
 
@@ -231,3 +239,6 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
         }
     }
 }
+
+template class Decoder<VideoBuffer>;
+template class Decoder<VideoBufferDouble>;

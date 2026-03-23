@@ -108,6 +108,9 @@
 # This is happening or Raspberry Pi Zero 2W. Disable this to use SW decoding for that case.
 #hw-decode = true
 
+# Use double buffering for drawing video. May smooth rendering but increase CPU usage
+#double-buffered = true;
+
 # Request extra frames onevery key press. Usefull if you do not see last updates after key press
 # Enable for RPI hardware decoding and other systems where hardware decoder tends to buffer frames
 # 0 - disabled, enter number of frames to request (find minimal value that get all screen updates)

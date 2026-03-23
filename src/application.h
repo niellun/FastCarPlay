@@ -36,6 +36,7 @@ private:
     bool processSystemEvent(const SDL_Event &e);
     bool processFrameEvents(AtomicQueue<Message> &queue, Renderer &renderer);
 
+    template <class Buffer>
     void loop();
 
     SDL_Window *_window;
