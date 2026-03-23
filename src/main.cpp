@@ -2,20 +2,19 @@
 #include <iostream>
 #include <memory>
 
-#include "helper/functions.h"
+#include "common/functions.h"
+#include "common/logger.h"
 
 #include "application.h"
 #include "pipe_listener.h"
 #include "settings.h"
 
-static const char *title = "Fast Car Play v0.7";
+static const char *title = "Fast Car Play v0.8";
 
 void start()
 {
-    if (!Settings::logging)
-        disable_cout();
-    else
-        Settings::print();
+    set_log_level(Settings::loglevel);
+    Settings::print();
 
     if (Settings::keyPipe.value.length() > 2)
         PipeListener pipeListener(Settings::keyPipe.value.c_str());

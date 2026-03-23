@@ -8,89 +8,65 @@
 #include <mutex>
 #include <string>
 
-#include "helper/isender.h"
+#include "protocol/imessage_sender.h"
 #include "struct/atomic_queue.h"
-#include "struct/command.h"
 #include "struct/usb_buffer.h"
-#include "aes_cipher.h"
+#include "protocol/aes_cipher.h"
+#include "protocol/connection_reader.h"
+#include "recorder.h"
 
-#define MAX_USB_REQUESTS 128
-#define COMMAND_QUEUE_SIZE 256
+#define LINK_RETRY 5
+#define LINK_RETRY_TIMEOUT 100
+#define RECONNECT_TIMEOUT 100
+#define PROTOCOL_HEARTBEAT_DELAY 3000
+
+#define WRITE_QUEUE_SIZE 256
 #define ENCRYPTION_BASE "SkBRDy3gmrw1ieH0"
 
-#define PROTOCOL_DEBUG_NONE 0
-#define PROTOCOL_DEBUG_UNKNOWN 1
-#define PROTOCOL_DEBUG_NOSTREAM 2
-#define PROTOCOL_DEBUG_OUT 3
-#define PROTOCOL_DEBUG_ALL 4
-
-class Connector;
-
-struct UsbContext {
-    Connector* owner;
-    DataSlot* slot;
-    libusb_transfer* transfer;
-};
-
-class Connector : public ISender
+class Connector : public IMessageReceiver
 {
 
 public:
     Connector();
     virtual ~Connector();
 
-    void start();
+    void start(atomic<int8_t> *statusHandler);
     void stop();
-    bool send(std::unique_ptr<Command> packet) override;
 
-protected:
-    virtual void onData(uint32_t cmd, uint32_t length, uint8_t *data) = 0;
-    virtual void onStatus(u_int8_t status) = 0;
-    virtual void onDevice(bool connected) = 0;
+    bool inline send(std::unique_ptr<Message> message) { return writeQueue.pushDiscard(std::move(message)); }
 
-    void setEncryption(bool enabled);
+    AtomicQueue<Message> writeQueue;
+    AtomicQueue<Message> videoStream;
+    AtomicQueue<Message> audioStreamMain;
+    AtomicQueue<Message> audioStreamAux;
 
-    static void printMessage(uint32_t cmd, uint32_t length, uint8_t *data, bool encrypted, bool out);
-    static void printInts(uint8_t *data, uint32_t length, uint16_t max);
-    static void printBytes(uint8_t *data, uint32_t length, uint16_t max);
-    static const char *cmdString(int cmd);
-
-    AESCipher *_cipher = nullptr;
-    UsbBuffer _usbBuffer;
+    virtual void onMessage(std::unique_ptr<Message> message) override;
 
 private:
-    static void onUsbRead(libusb_transfer *transfer);
-
-    void readLoop();
-    void bufferReadLoop();
-    void writeLoop();
-    void onDisconnect();
-    bool connect(uint16_t vendor_id, uint16_t product_id);
-    bool link();
-
+    void mainLoop();
+    void writeLoop(libusb_device_handle *handler, uint8_t ep);
+    libusb_device *link(libusb_device_handle *handler, uint8_t *epIn, uint8_t *epOut);
+    void setEncryption(bool enabled);
+    bool fail(int status, const char *msg);
     bool state(u_int8_t state);
-    bool linkFail(int status, const char *msg);
-    int write(int cmd, bool encrypt, uint8_t *data, uint32_t size);
+    void onConnect();
+    void onDisconnect();
 
-    libusb_context *_context = nullptr;
-    libusb_device_handle *_device = nullptr;
-    uint8_t _endpoint_in;
-    uint8_t _endpoint_out;
-    uint8_t _usbTransfers;
-    std::atomic<bool> _connected = false;
-    std::atomic<bool> _ecnrypt = false;
+    Recorder _recorder;
+    AESCipher *_cipher;
+    ConnectionReader _reader;
+    libusb_context *_context;
+    std::thread _thread;
+
+    std::atomic<bool> _active;
+    std::atomic<bool> _connected;
+    std::atomic<bool> _ecnrypt;
 
     uint8_t _state;
     uint8_t _failCount;
     uint8_t _nodeviceCount;
 
-    std::thread _read_thread;
-    std::thread _buffer_thread;
-    std::thread _write_thread;
-    std::mutex _write_mutex;
-    std::atomic<bool> _active = false;
-    AtomicQueue<Command> _queue{COMMAND_QUEUE_SIZE};
-    UsbContext _usbContext[MAX_USB_REQUESTS] = {};
+    atomic<int8_t> *_statusHandler;
 };
 
 #endif /* SRC_CONNECTOR */

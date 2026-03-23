@@ -3,12 +3,14 @@
 #include <iostream>
 #include <fstream>
 
+#include "common/logger.h"
+
 bool Settings::load(const std::string &filename)
 {
     std::ifstream file(filename);
     if (!file.is_open())
     {
-        std::cerr << "[Settings] Cannot open file: " << filename << std::endl;
+        log_e( "Cannot open file > %s", filename.c_str());
         return false;
     }
 
@@ -46,7 +48,7 @@ bool Settings::load(const std::string &filename)
             }
         }
         if (!found)
-            std::cerr << "[Settings] Unknown key “" << key << "”" << std::endl;
+            log_w("Unknown key > %s", key.c_str());
     }
     return true;
 }
@@ -55,7 +57,7 @@ void Settings::print()
 {
     for (ISetting *setting : _settings())
     {
-        std::cout << "[Settings] " << setting->name << " = " << setting->asString() << "\n";
+        log_d("%s = %s",setting->name.c_str(), setting->asString().c_str());
     }
 }
 

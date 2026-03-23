@@ -3,14 +3,12 @@
 #include <SDL2/SDL_ttf.h>
 
 #include "struct/video_buffer.h"
+#include "common/logger.h"
 
 #include "settings.h"
 #include "interface.h"
 #include "decoder.h"
 #include "pcm_audio.h"
-
-#define EVT_STATUS_OFFSET 0
-#define EVT_PHONE_OFFSET 1
 
 static KeySetting<int> *keyMap[] = {
     &Settings::keySiri,
@@ -42,7 +40,7 @@ Application::Application(/* args */) : _window(nullptr),
                                        _renderer(nullptr),
                                        _active(true)
 {
-    std::cout << "[App] Creating" << std::endl;
+    log_v("Creating");
 
     if (!setAudioDriver())
         throw std::runtime_error("Unsupported audio driver " + std::string(Settings::audioDriver.value));
@@ -63,26 +61,24 @@ Application::Application(/* args */) : _window(nullptr),
         throw std::runtime_error(std::string("SDL get display mode failed > ") + SDL_GetError());
     }
 
-    std::cout << "[App] SDL screen: "
-              << _displayMode.w << "x" << _displayMode.h << "@" << _displayMode.refresh_rate
-              << ", audio: " << SDL_GetCurrentAudioDriver() << std::endl;
+    log_i("SDL screen %dx%d@%d, audio driver %s", _displayMode.w, _displayMode.h, _displayMode.refresh_rate, SDL_GetCurrentAudioDriver());
 }
 
 Application::~Application()
 {
-    std::cout << "[App] Destroying" << std::endl;
+    log_v("Destroying");
     if (_renderer != nullptr)
         SDL_DestroyRenderer(_renderer);
     if (_window != nullptr)
         SDL_DestroyWindow(_window);
     TTF_Quit();
     SDL_Quit();
-    std::cout << "[App] Finished" << std::endl;
+    log_d("Finished");
 }
 
 void Application::start(const char *title)
 {
-    std::cout << "[App] Initialising" << std::endl;
+    log_d("Initialising");
 
     // Create SDL window centered on screen
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, Settings::fastScale ? "nearest" : "best");
@@ -118,20 +114,14 @@ void Application::start(const char *title)
     SDL_RendererInfo rendererInfo{};
     if (SDL_GetRendererInfo(_renderer, &rendererInfo) == 0)
     {
-        std::cout << "[App] Renderer: " << rendererInfo.name
-                  << " (" << ((rendererInfo.flags & SDL_RENDERER_ACCELERATED) ? "accelerated" : "software")
-                  << ", " << ((rendererInfo.flags & SDL_RENDERER_PRESENTVSYNC) ? "vsync" : "no-vsync")
-                  << ")" << std::endl;
+        log_i("Renderer %s (%s, %s)", rendererInfo.name,
+              ((rendererInfo.flags & SDL_RENDERER_ACCELERATED) ? "accelerated" : "software"),
+              ((rendererInfo.flags & SDL_RENDERER_PRESENTVSYNC) ? "vsync" : "no-vsync"));
     }
 
-    // Register additional events
-    _evtBase = SDL_RegisterEvents(2);
-    if (_evtBase == (Uint32)-1)
-        throw std::runtime_error(std::string("Can't register custom events > ") + SDL_GetError());
-
-    std::cout << "[App] Starting" << std::endl;
+    log_v("Starting");
     loop();
-    std::cout << "[App] Stopped" << std::endl;
+    log_v("Stopped");
 }
 
 bool Application::setAudioDriver()
@@ -159,7 +149,7 @@ int Application::processKey(SDL_Keysym key)
             return keyMap[i]->key;
         }
     }
-    std::cout << "[App] Unmapped key " << key.sym << std::endl;
+    log_w("Unmapped key %d", key.sym);
     return 0;
 }
 
@@ -202,31 +192,16 @@ bool Application::processSystemEvent(const SDL_Event &e)
         }
     }
 
-    if (e.type == (_evtBase + EVT_STATUS_OFFSET))
-    {
-        _state.deviceStatus = e.user.code;
-        return true;
-    }
-
-    if (e.type == (_evtBase + EVT_PHONE_OFFSET))
-    {
-        _state.connected = e.user.code != 0;
-        _state.frameRendered = false;
-        _state.dirty = true;
-        _state.requestFrame = 0;
-        _state.flushBuffers = _state.connected;
-        return true;
-    }
-
     return false;
 }
 
-bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
+bool Application::processFrameEvents(AtomicQueue<Message> &queue, Renderer &renderer)
 {
     bool result = false;
     SDL_Event e;
-    int motionX = -1;
-    int motionY = -1;
+    bool motion = false;
+    int motionX = 0;
+    int motionY = 0;
     int downX = -1;
     int downY = -1;
     int upX = -1;
@@ -262,6 +237,7 @@ bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
                 break;
             motionX = e.motion.x;
             motionY = e.motion.y;
+            motion = true;
             break;
         }
         case SDL_KEYDOWN:
@@ -269,7 +245,7 @@ bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
             int key = processKey(e.key.keysym);
             if (key > 0)
             {
-                protocol.send(Command::Control(key));
+                queue.pushDiscard(Message::Control(key));
                 result = true;
             }
             break;
@@ -278,7 +254,7 @@ bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
         {
             if (e.key.keysym.sym == Settings::keyEnter)
             {
-                protocol.send(Command::Control(Settings::keyEnterUp.key));
+                queue.pushDiscard(Message::Control(Settings::keyEnterUp.key));
                 result = true;
             }
             break;
@@ -286,14 +262,14 @@ bool Application::processFrameEvents(Protocol &protocol, Renderer &renderer)
         }
     }
 
-    if (_state.frameRendered && (downX >= 0 || upX >= 0 || motionX >= 0))
+    if (_state.frameRendered && (downX >= 0 || upX >= 0 || motion))
     {
         if (downX >= 0)
-            protocol.send(Command::Click(renderer.xScale * downX / _width, renderer.yScale * downY / _height, true));
-        if (motionX >= 0)
-            protocol.send(Command::Move(renderer.xScale * motionX / _width, renderer.yScale * motionY / _height));
+            queue.pushDiscard(Message::Click(renderer.xScale * downX / _width, renderer.yScale * downY / _height, true));
+        if (motion)
+            queue.pushDiscard(Message::Move(renderer.xScale * motionX / _width, renderer.yScale * motionY / _height));
         if (upX >= 0)
-            protocol.send(Command::Click(renderer.xScale * upX / _width, renderer.yScale * upY / _height, false));
+            queue.pushDiscard(Message::Click(renderer.xScale * upX / _width, renderer.yScale * upY / _height, false));
     }
 
     return result;
@@ -319,25 +295,43 @@ void Application::loop()
     interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN);
 
     VideoBuffer videoBuffer;
-    Protocol protocol(Settings::width, Settings::height, Settings::sourceFps);
+    Connector protocol;
     Decoder decoder;
-    PcmAudio audioMain("Main"), audioAux("Aux");
+    PcmAudio audioMain("main"), audioAux("aux");
 
-    decoder.start(&protocol.videoData, &videoBuffer, AV_CODEC_ID_H264);
+    decoder.start(&protocol.videoStream, &videoBuffer, AV_CODEC_ID_H264);
     audioMain.start(&protocol.audioStreamMain);
     audioAux.start(&protocol.audioStreamAux, &audioMain);
-    protocol.start(_evtBase + EVT_STATUS_OFFSET, _evtBase + EVT_PHONE_OFFSET);
+    protocol.start(&_state.deviceStatus);
 
-    std::cout << "[App] Loop" << std::endl;
+    log_v("Loop");
     Uint32 frameStart = SDL_GetTicks();
     AVFrame *frame = nullptr;
     uint32_t frameid = 0;
     uint32_t latestFrameid = 0;
     uint32_t frameTargetTime = Settings::fps > 0 ? 1000 / Settings::fps : 1000;
-    int frameDelay = 0;
+    int skipEvents = 0;
     while (_active)
     {
-        if (_state.connected && _state.showVideo)
+        if (_state.deviceStatus != _state.previousdeviceStatus)
+        {
+            // On connect/disconnect
+            if (_state.previousdeviceStatus == PROTOCOL_STATUS_CONNECTED || _state.deviceStatus == PROTOCOL_STATUS_CONNECTED)
+            {
+                _state.frameRendered = false;
+                _state.dirty = true;
+                _state.requestFrame = 0;
+            }
+            // On connect
+            if (_state.deviceStatus == PROTOCOL_STATUS_CONNECTED)
+            {
+                decoder.flush();
+                videoBuffer.reset();
+            }
+            _state.previousdeviceStatus = _state.deviceStatus;
+        }
+
+        if (_state.deviceStatus == PROTOCOL_STATUS_CONNECTED && _state.showVideo)
         {
             if (videoBuffer.latest(&frame, &frameid) && frame && (frameid != latestFrameid || _state.dirty))
             {
@@ -345,7 +339,7 @@ void Application::loop()
                 {
                     _state.frameRendered = true;
                     if (!_state.dirty && (frameid != latestFrameid + 1))
-                        std::cout << "[App] Frame drop " << frameid - latestFrameid - 1 << " on " << frameid << std::endl;
+                        log_d("Frame drop %d on %d", frameid - latestFrameid - 1, frameid);
                     latestFrameid = frameid;
                     _state.dirty = false;
                 }
@@ -356,9 +350,9 @@ void Application::loop()
             {
                 if (++_state.requestFrame % Settings::forceRedraw == 0)
                 {
-                    std::cout << "[App] Request screen update" << std::endl;
-                    protocol.send(Command::Control(BTN_SCREEN_REFRESH));
-                    if (_state.requestFrame >= Settings::forceRedraw * 3)
+                    log_d("Request screen update");
+                    protocol.send(Message::Control(BTN_SCREEN_REFRESH));
+                    if (_state.requestFrame >= Settings::forceRedraw * REDRAW_REQUEST)
                         _state.requestFrame = 0;
                 }
             }
@@ -366,7 +360,7 @@ void Application::loop()
 
         if (!_state.frameRendered || !_state.showVideo)
         {
-            interface.drawHome(_state.dirty, _state.connected ? PROTOCOL_STATUS_CONNECTED : _state.deviceStatus);
+            interface.drawHome(_state.dirty, _state.deviceStatus);
             _state.dirty = false;
             SDL_Event e;
             while (SDL_PollEvent(&e))
@@ -374,23 +368,20 @@ void Application::loop()
         }
         else
         {
-            if (processFrameEvents(protocol, interface) && Settings::forceRedraw > 0)
+            if (latestFrameid < 0 || latestFrameid == videoBuffer.latestId() || ++skipEvents > Settings::eventsSkip)
             {
-                _state.requestFrame = 1;
+                skipEvents = 0;
+                if (processFrameEvents(protocol.writeQueue, interface) && Settings::forceRedraw > 0)
+                {
+                    _state.requestFrame = 1;
+                }
             }
-        }
-
-        if (_state.flushBuffers)
-        {
-            _state.flushBuffers = false;
-            decoder.flush();
-            videoBuffer.reset();
         }
 
         if (_active && !Settings::vsync)
         {
             Uint32 frameEnd = SDL_GetTicks();
-            frameDelay = frameTargetTime - (frameEnd - frameStart);
+            int frameDelay = frameTargetTime - (frameEnd - frameStart);
             if (latestFrameid > 0 && latestFrameid != videoBuffer.latestId())
             {
                 SDL_Delay(1);

@@ -1,7 +1,8 @@
 #include "pcm_audio.h"
-#include "helper/functions.h"
-#include "helper/protocol_const.h"
+#include "common/functions.h"
+#include "protocol/protocol_const.h"
 #include "settings.h"
+#include "common/logger.h"
 
 // Add sample size (buffer size in samples) to ChannelConfig
 ChannelConfig PcmAudio::_configTable[] = {
@@ -20,8 +21,7 @@ PcmAudio::PcmAudio(const char *name)
         _name = "[Audio]";
         return;
     }
-    _name = "[Audio ";
-    _name = _name + name + "]";
+    _name = name;
     _fade = false;
     _faded = false;
     _volume = 1.0;
@@ -171,7 +171,8 @@ void PcmAudio::stop()
 
 void PcmAudio::runner()
 {
-    setThreadName("audio");
+    std::string threadName = "audio-" + _name;
+    setThreadName(threadName.c_str());
 
     SDL_AudioDeviceID device = 0;
     SDL_AudioSpec spec;
@@ -204,7 +205,7 @@ void PcmAudio::runner()
             device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
             if (device == 0)
             {
-                std::cerr << _name << " Failed to open audio: " << SDL_GetError() << std::endl;
+                log_w("Failed to open audio %s > %s", _name.c_str(), SDL_GetError());                
                 SDL_Delay(100);
                 continue;
             }
@@ -219,7 +220,7 @@ void PcmAudio::runner()
         _prefill = spec.channels == 1 ? Settings::audioDelayCall : Settings::audioDelay;
 
         SDL_PauseAudioDevice(device, 0);
-        std::cout << _name << " Start playing " << _config.rate << "kHz " << (_config.channels == 2 ? "stereo" : "mono") << std::endl;
+        log_i("Start playing %s %dkHz %s", _name.c_str(), _config.rate, (_config.channels == 2 ? "stereo" : "mono"));
         if (_fader)
             _fader->Fade(true);
 
@@ -228,7 +229,7 @@ void PcmAudio::runner()
                  { return _paused.load() || !_active.load(); });
 
         SDL_PauseAudioDevice(device, 1);
-        std::cout << _name << " Stop playing" << std::endl;
+        log_i("Stop playing %s", _name.c_str());
         if (_fader)
             _fader->Fade(false);
     }

@@ -6,9 +6,8 @@
 
 #include <SDL2/SDL.h>
 
-#include "helper/isender.h"
-#include "struct/audio_chunk.h"
 #include "struct/atomic_queue.h"
+#include "protocol/message.h"
 
 class Recorder
 {
@@ -16,17 +15,16 @@ public:
     Recorder(uint16_t buffSize);
     ~Recorder();
 
-    void start(ISender *sender);
+    void start(AtomicQueue<Message> *queue);
     void stop();
 
 private:
     static void AudioCallback(void *userdata, Uint8 *stream, int len);
     void runner();
 
-    ISender *_sender;
+    AtomicQueue<Message> *_queue;
     std::atomic<bool> _active;
-    std::thread _thread;
-    AtomicQueue<AudioChunk> _data;
+    SDL_AudioDeviceID _device;        
 };
 
 #endif /* SRC_RECORDER */

@@ -16,9 +16,9 @@
 
 # Application drawing target framerate. This can responsiveness.
 # If the setting is lower than source-fps the framse will be dropped
-# If the setting is not multiple of source-fps can still cause frame drops cause out-of-sync 
+# If the setting is not multiple of source-fps can still cause frame drops cause out-of-sync
 # source images and drawing times
-#fps = 50 
+#fps = 50
 
 # Application window mode
 # 0 - windowed
@@ -29,8 +29,15 @@
 # Show mouse pointer
 #cursor = false
 
-# Enable generic console logging. Can reduce performace
-#logging = false 
+# Set log level. Can reduce performace
+# 0 - No logging
+# 1 - Errors
+# 2 - Warnings
+# 3 - Information
+# 4 - Debug
+# 5 - Verbose
+# 6 - Protocol dump
+#log-level = 2
 
 ##############################################################################
 # 2.Device configurations
@@ -66,7 +73,7 @@
 # 1 - Car
 # 2 - Box
 # 3 - Phone
-#mic-type = 1   
+#mic-type = 1
 
 # Requested image DPI (Android auto scale)
 #android-dpi = 120
@@ -80,7 +87,7 @@
 # to go to "Developer settings". Tap "Video Resolution" and select "Allow to car and phone to negotiate"
 # 1 - 480p => 800x480
 # 2 - 720p => 1280x720
-# 3 - 1080p => 1920x1080 
+# 3 - 1080p => 1920x1080
 #android-resolution = 1
 
 # Media delay for android auto
@@ -93,7 +100,7 @@
 # Font size for messgaes on screen. Set to 0 is you do not want any
 #font-size = 30
 
-# Enable vsync. This reduce tearing but can dramatically affect performance on low end systems 
+# Enable vsync. This reduce tearing but can dramatically affect performance on low end systems
 #vsync = false
 
 # Prefer HW decoding.
@@ -105,6 +112,9 @@
 # Enable for RPI hardware decoding and other systems where hardware decoder tends to buffer frames
 # 0 - disabled, enter number of frames to request (find minimal value that get all screen updates)
 #force-redraw = 0
+
+# Skip several frames on processing events if FPS drops. Can increase responsivenes and reduce lag.
+#draw-skip-events = 0
 
 # Corrects aspect of UI
 #aspect-correction = 1
@@ -119,16 +129,20 @@
 # Select faster method of scaling image to window size (nearest) or better quality (linear)
 #fast-render-scale = false
 
-# USB reading number of async requests and buffer size
-#async-usb-calls = 8
-#usb-buffer-size = 131072       
+# USB read pipeline tuning, number of libusb bulk transfers kept in flight and size of each USB transfer
+# Increase amount of async-usb-calls if you have issues with audio and video lagging behind
+#async-usb-calls = 16
+#usb-buffer-size = 2048
+
+# Number of buffered USB data slots queued for processing
+#usb-buffer = 64
 
 # Size of video and audio buffers. Increase if you see artifacts
 #video-buffer-size = 64
 #audio-buffer-size = 64
 
-# Audio delay for music and calls. Fill the buffer to this value before start playing. 
-# Increase if you hear audio artifacts or tearing. Should be less than audio-buffer-size 
+# Audio delay for music and calls. Fill the buffer to this value before start playing.
+# Increase if you hear audio artifacts or tearing. Should be less than audio-buffer-size
 #audio-buffer-wait = 2
 #audio-buffer-wait-call = 6
 
@@ -139,7 +153,7 @@
 
 # Basic number of audio sample frames in the output buffer that is scaled by sample rate.
 # This controls the size of the audio buffer used by the audio device.
-# The buffer time is ~ 1/10 buffer size in ms, depending on sample rate e.g. 2048 = ~200ms 
+# The buffer time is ~ 1/10 buffer size in ms, depending on sample rate e.g. 2048 = ~200ms
 # Preferably use power of 2 for the values or check your audio driver documentation
 #audio-buffer-samples = 512
 
@@ -150,10 +164,10 @@
 # pipewire
 #audio-driver = 
 
-# Run script or app on phone connected and disconnected. 
-# This script/app should be fast, otherwise it will block system. 
-# If you need to start application in background use scripts with fork 
-# 
+# Run script or app on phone connected and disconnected.
+# This script/app should be fast, otherwise it will block system.
+# If you need to start application in background use scripts with fork
+#
 #   #!/bin/bash
 #   MyApp &
 #   echo $! > app.pid
@@ -164,15 +178,15 @@
 #       rm app.pid
 #   fi
 #
-#on-connect-script = 
-#on-disconnect-script = 
+#on-connect-script =
+#on-disconnect-script =
 
 ##############################################################################
 # 4. Key mapping
 ##############################################################################
 
 # Map keys to control 
-# If you set logging true you and press keys you will see there codes in logs
+# If you set log-level and press keys you will see their codes in logs
 #key-siri = 115             # S
 #key-nightmode-on = 122     # Z
 #key-nightmode-off = 120    # X
@@ -200,22 +214,13 @@
 # Path for named pipe that keys are going to be listen on to.
 # If empty pipe listening is disables.
 # Example /tmp/fastcarplay_pipe
-# Keys are byte value [1..255] 
-# They are mapped to keys defined above 
-#key-pipe-path = 
+# Keys are byte value [1..255]
+# They are mapped to keys defined above
+#key-pipe-path =
 
 ##############################################################################
-# 4.Debug
+# 5.Debug
 ##############################################################################
-
-# Protocol debug level. Works only on builds only with PROTOCOL_DEBUG flag set.
-# Add -DPROTOCOL_DEBUG to CXXCOMMON to enable protocol debugging and rebuild.
-# 0 - nothing
-# 1 - unknown commands
-# 2 - all commands except data streams
-# 3 - include outgoing commands
-# 4 - log everything
-# protocol-debug = 0
 
 # Enable FFMPEG AV_CODEC_FLAG_LOW_DELAY for HW decoder.
 # Force low delay.

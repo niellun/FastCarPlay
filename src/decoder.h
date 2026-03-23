@@ -12,8 +12,7 @@ extern "C"
 
 #include "struct/video_buffer.h"
 #include "struct/atomic_queue.h"
-#include "struct/message.h"
-#include "helper/error.h"
+#include "protocol/message.h"
 
 class Decoder
 {
@@ -34,7 +33,6 @@ private:
     std::thread _thread;
     AVCodecContext* _context; 
     AVCodecID _codecId;
-    Error _status;
 
     std::atomic<bool> _active = false;
 

@@ -1,5 +1,5 @@
-#ifndef SRC_HELPER_PROTOCOL_CONST
-#define SRC_HELPER_PROTOCOL_CONST
+#ifndef SRC_PROTOCOL_PROTOCOL_CONST
+#define SRC_PROTOCOL_PROTOCOL_CONST
 
 #define PROTOCOL_STATUS_UNKNOWN -1     // Manual > 0
 #define PROTOCOL_STATUS_INITIALISING 0 // Initialised > 1
@@ -93,4 +93,4 @@ const ProtocolCmdEntry protocolCmdList[] = {
     {CMD_ENCRYPTION, "Encryption"}};
 
 
-#endif /* SRC_HELPER_PROTOCOL_CONST */
+#endif /* SRC_PROTOCOL_PROTOCOL_CONST */

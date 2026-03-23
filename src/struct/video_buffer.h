@@ -1,5 +1,5 @@
-#ifndef SRC_STRUCT_VIDEO_BUFFER
-#define SRC_STRUCT_VIDEO_BUFFER
+#ifndef SRC_STRUCT_VIDER_BUFFER2
+#define SRC_STRUCT_VIDER_BUFFER2
 
 extern "C"
 {
@@ -9,7 +9,7 @@ extern "C"
 #include <atomic>
 #include <stdexcept>
 
-#define BUFFER_VIDEO_FRAMES 3
+#define BUFFER_VIDEO_FRAMES 4
 
 class VideoBuffer
 {
@@ -17,6 +17,7 @@ public:
     VideoBuffer()
     {
         _writing.store(0);
+        _oldest.store(-1);
         _reading.store(-1);
         _latest.store(-1);
         for (uint8_t i = 0; i < BUFFER_VIDEO_FRAMES; ++i)
@@ -52,10 +53,15 @@ public:
 
     bool latest(AVFrame **frame, uint32_t *id)
     {
-        _reading.store(_latest.load());
+        _reading.store(_oldest.load());
         int index = _reading.load();
         if (index < 0)
-            return false;
+        {
+            _reading.store(_latest.load());
+            index = _reading.load();
+            if (index < 0)
+                return false;
+        }
         *frame = _frames[index];
         *id = _ids[index];
         return true;
@@ -63,13 +69,15 @@ public:
 
     void consume()
     {
+        if(_oldest.load() == _reading.load())
+            _oldest.store(-1);
         _reading.store(-1);
     }
 
     AVFrame *write(uint32_t id)
     {
         int index = _writing.load();
-        while (index == _reading.load() || index == _latest.load())
+        while (index == _reading.load() || index == _latest.load() || index == _oldest.load())
         {
             index = (index + 1) % BUFFER_VIDEO_FRAMES;
         }
@@ -80,17 +88,20 @@ public:
 
     void commit()
     {
+        _oldest.store(_latest.load());
         _latest.store(_writing.load());
     }
 
     void reset()
     {
         _writing.store(0);
+        _oldest.store(-1);
         _reading.store(-1);
         _latest.store(-1);
     }
 
 private:
+    std::atomic<int8_t> _oldest;
     std::atomic<int8_t> _latest;
     std::atomic<int8_t> _reading;
     std::atomic<int8_t> _writing;
@@ -98,4 +109,4 @@ private:
     uint32_t _ids[BUFFER_VIDEO_FRAMES];
 };
 
-#endif /* SRC_STRUCT_VIDEO_BUFFER */
+#endif /* SRC_STRUCT_VIDER_BUFFER2 */

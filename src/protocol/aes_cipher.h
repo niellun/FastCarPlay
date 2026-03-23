@@ -2,9 +2,11 @@
 #define SRC_AES_CIPHER
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
-#include <memory>
+
+#include "common/status.h"
 
 class AESCipher
 {
@@ -14,8 +16,8 @@ public:
     AESCipher(const std::string &base_key);
     ~AESCipher() = default;
 
-    bool Encrypt(uint8_t *data, uint16_t length) const;
-    bool Decrypt(uint8_t *data, uint16_t length) const;
+    Status Encrypt(uint8_t *data, uint32_t length) const;
+    Status Decrypt(uint8_t *data, uint32_t length) const;
 
     uint32_t Seed() const { return _seed; }
     const std::string& Key() const { return _baseKey; }

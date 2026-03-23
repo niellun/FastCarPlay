@@ -1,8 +1,8 @@
 #include "renderer.h"
 #include <cstring>
-#include <iostream>
 #include "settings.h"
-#include "helper/functions.h"
+#include "common/functions.h"
+#include "common/logger.h"
 #include <SDL2/SDL_ttf.h>
 
 RendererText::RendererText(const void *font_data, int data_size, int ptsize)
@@ -19,14 +19,14 @@ RendererText::RendererText(const void *font_data, int data_size, int ptsize)
     SDL_RWops *font_rw = SDL_RWFromConstMem(font_data, data_size);
     if (!font_rw)
     {
-        std::cerr << "[UX] SDL can't open font: " << SDL_GetError() << std::endl;
+        log_e("SDL can't open font: %s", SDL_GetError());
         return;
     }
 
     _font = TTF_OpenFontRW(font_rw, 1, ptsize);
     if (!_font)
     {
-        std::cerr << "[UX] SDL can't load font: " << TTF_GetError() << std::endl;
+        log_e("SDL can't load font: %s", TTF_GetError());
     }
 };
 
@@ -77,7 +77,7 @@ SDL_Texture *RendererText::getText(SDL_Renderer *renderer, const char *text, SDL
     SDL_Surface *textSurface = TTF_RenderText_Blended(_font, text, color);
     if (!textSurface)
     {
-        std::cerr << "[UX] Failed to create text surface: " << TTF_GetError() << std::endl;
+        log_e("Failed to create text surface: %s", TTF_GetError());
         return nullptr;
     }
 
@@ -85,7 +85,7 @@ SDL_Texture *RendererText::getText(SDL_Renderer *renderer, const char *text, SDL
     SDL_FreeSurface(textSurface);
     if (!textTexture)
     {
-        std::cerr << "[UX] Failed to create text texture: " << TTF_GetError() << std::endl;
+        log_e("Failed to create text texture: %s", TTF_GetError());
         return nullptr;
     }
 
@@ -98,14 +98,14 @@ RendererImage::RendererImage(const void *img_data, int img_size)
     SDL_RWops *img_rw = SDL_RWFromConstMem(img_data, img_size);
     if (!img_rw)
     {
-        std::cerr << "[UX] SDL can't open image: " << SDL_GetError() << std::endl;
+        log_e("SDL can't open image: %s", SDL_GetError());
         return;
     }
 
     _surface = SDL_LoadBMP_RW(img_rw, 1);
     if (!_surface)
     {
-        std::cerr << "[UX] Failed to create image surface: " << SDL_GetError() << std::endl;
+        log_e("Failed to create image surface: %s", SDL_GetError());
         return;
     }
 
@@ -186,7 +186,7 @@ bool Renderer::prepareTexture(uint32_t format, int width, int height)
                                  width, height);
     if (!_texture)
     {
-        std::cerr << "[UX] SDL can't create video texture: " << SDL_GetError() << std::endl;
+        log_e("SDL can't create video texture: %s", SDL_GetError());
         return false;
     }
 
@@ -230,7 +230,7 @@ bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight)
     xScale = (float)width / frame->width;
     yScale = (float)height / frame->height;
 
-    std::cout << "[UX] Prepare renderer " << width << "x" << height << " for source " << frame->width << "x" << frame->height << " target " << targetWidth << "x" << targetHeight << std::endl;
+    log_i("Prepare renderer %dx%d for source %dx%d target %dx%d", width, height, frame->width, frame->height, targetWidth, targetHeight);
 
     AVPixelFormat fmt = static_cast<AVPixelFormat>(frame->format);
     for (const FormatMapping &mapping : _mapping)
@@ -239,7 +239,7 @@ bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight)
         {
             if (prepareTexture(mapping.sdlFormat, frame->width, frame->height))
             {
-                std::cout << "[UX] Direct rendering " << mapping.name << std::endl;
+                log_i("Direct rendering %s", mapping.name.c_str());
                 _render = mapping.function;
                 return true;
             }
@@ -255,14 +255,14 @@ bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight)
                           swsFlags, nullptr, nullptr, nullptr);
     if (!_sws)
     {
-        std::cerr << "[UX] Can't create sws context" << std::endl;
+        log_e("Can't create sws context");
         return false;
     }
 
     _frame = av_frame_alloc();
     if (!_frame)
     {
-        std::cerr << "[UX] Can't allocate AVFrame" << std::endl;
+        log_e("Can't allocate AVFrame");
         return false;
     }
     _frame->format = AV_PIX_FMT_YUV420P;
@@ -272,11 +272,11 @@ bool Renderer::prepare(AVFrame *frame, int targetWidth, int targetHeight)
     int avRes = av_frame_get_buffer(_frame, 32);
     if (avRes != 0)
     {
-        std::cerr << "[UX] Can't allocate AVFrame buffer: " << avErrorText(avRes) << std::endl;
+        log_e("Can't allocate AVFrame buffer: %s", avErrorText(avRes).c_str());
         return false;
     }
 
-    std::cout << "[UX] Scaling rendering source format " << frame->format << std::endl;
+    log_i("Scaling rendering source format %d", frame->format);
     _render = &Renderer::scale;
     return true;
 }

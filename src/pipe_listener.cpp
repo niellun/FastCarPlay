@@ -5,9 +5,11 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
-#include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdexcept>
+
+#include "common/logger.h"
 
 PipeListener::PipeListener(const char *path)
     : _path(path), _active(false)
@@ -41,20 +43,20 @@ PipeListener::~PipeListener()
 
 void PipeListener::loop()
 {
-    std::cout << "[Pipe] Listening on " << _path << std::endl;
+    log_i("Listening on %s", _path);
     while (_active)
     {
         int fd = open(_path, O_RDONLY);
         if (fd == -1)
         {
-            std::cout << "[Pipe] Failed to open " << _path << ": " << std::strerror(errno) << std::endl;
+            log_e("Failed to open %s: %s", _path, std::strerror(errno));
             return;
         }
 
         char value;
         while (_active && read(fd, &value, 1) > 0)
         {
-            std::cout << "[Pipe] Received: " << (int)value << std::endl;
+            log_d("Received: %d", static_cast<int>(value));
             if (value != 0)
             {
                 SDL_Event e{};
@@ -70,5 +72,5 @@ void PipeListener::loop()
         if (fd >= 0)
             close(fd);
     }
-    std::cout << "[Pipe] Finished on " << _path << std::endl;
+    log_v("Finished on %s", _path);
 }

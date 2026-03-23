@@ -1,7 +1,7 @@
 #ifndef SRC_SETTINGS
 #define SRC_SETTINGS
 
-#include "helper/settings_base.h"
+#include "common/settings_base.h"
 
 #define SCREEN_MODE_WINDOW 0
 #define SCREEN_MODE_FULLSCREEN 1
@@ -20,7 +20,7 @@ public:
     static inline Setting<int> fps{"fps", 50};
     static inline Setting<int> screenMode{"window-mode", 0};
     static inline Setting<bool> cursor{"cursor", false};
-    static inline Setting<bool> logging{"logging", false};
+    static inline Setting<int> loglevel{"log-level", 2};
 
     // Device configurations section
     static inline Setting<bool> encryption{"encryption", false};
@@ -32,7 +32,7 @@ public:
     static inline Setting<bool> bluetoothAudio{"bluetooth-audio", false};
     static inline Setting<int> micType{"mic-type", 1};
     static inline Setting<int> dpi{"android-dpi", 120};
-    static inline Setting<int> androidMode{"android-resolution", 0};
+    static inline Setting<int> androidMode{"android-resolution", 1};
     static inline Setting<int> mediaDelay{"android-media-delay", 300};
 
     // Application configuration section
@@ -40,12 +40,14 @@ public:
     static inline Setting<bool> vsync{"vsync", false};
     static inline Setting<bool> hwDecode{"hw-decode", true};
     static inline Setting<int> forceRedraw{"force-redraw", 0};
+    static inline Setting<int> eventsSkip{"draw-skip-events", 0};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<std::string> renderDriver{"renderer-driver", ""};    
     static inline Setting<bool> alternativeRendering{"alternative-rendering", true};    
     static inline Setting<bool> fastScale{"fast-render-scale", false};
-    static inline Setting<int> usbQueue{"async-usb-calls", 8};
-    static inline Setting<int> usbBufferSize{"usb-buffer-size", 131072};        
+    static inline Setting<int> usbQueue{"async-usb-calls", 16};
+    static inline Setting<int> usbTransferSize{"usb-buffer-size", 2048};         
+    static inline Setting<int> usbBuffer{"usb-buffer", 64};        
     static inline Setting<int> videoQueue{"video-buffer-size", 64};
     static inline Setting<int> audioQueue{"audio-buffer-size", 64};
     static inline Setting<int> audioDelay{"audio-buffer-wait", 2};
@@ -53,7 +55,6 @@ public:
     static inline Setting<float> audioFade{"audio-fade", 0.3};
     static inline Setting<int> audioBuffer{"audio-buffer-samples", 512};
     static inline Setting<std::string> audioDriver{"audio-driver", ""};
-
     static inline Setting<std::string> onConnect{"on-connect-script", ""};
     static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};
 
@@ -83,7 +84,6 @@ public:
     static inline Setting<std::string> keyPipe{"key-pipe-path", ""};
 
     // Debug section
-    static inline Setting<int> protocolDebug{"protocol-debug", 0};
     static inline Setting<bool> codecLowDelay{"decode-low-delay", true};
     static inline Setting<bool> codecFast{"decode-fast", true};
 
