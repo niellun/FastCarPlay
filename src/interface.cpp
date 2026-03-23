@@ -6,17 +6,45 @@
 #include "protocol/protocol_const.h"
 
 Interface::Interface(SDL_Renderer *renderer)
-    : Renderer(renderer), _state(0),
+    : Renderer(renderer),
+      _state(0),
+      _debug(false),
       _textDongle(font, font_len, Settings::fontSize),
       _textInit(font, font_len, Settings::fontSize),
       _textConnect(font, font_len, Settings::fontSize),
       _textLaunch(font, font_len, Settings::fontSize),
+      _textDebug(font, font_len, 15),
       _mainImage(background, background_len)
 {
 }
 
 Interface::~Interface()
 {
+}
+
+bool Interface::render(AVFrame *frame)
+{
+    if(!frame)
+        return false;
+
+    if (_render == nullptr || frame->width != _textureWidth || frame->height != _textureHeight)
+    {
+        clear();
+        if (!prepare(frame, Settings::width, Settings::height))
+            return false;
+    }
+
+    (this->*_render)(frame);
+    SDL_RenderCopy(_renderer, _texture, &_sourceRect, nullptr);
+
+    if (_debug)
+    {
+        drawDebug();
+        _debug = false;
+    }
+
+    SDL_RenderPresent(_renderer);
+    return true;
 }
 
 bool Interface::drawHome(bool force, int state)
@@ -48,4 +76,36 @@ bool Interface::drawHome(bool force, int state)
 
     SDL_RenderPresent(_renderer);
     return true;
+}
+
+void Interface::debug(const char *text)
+{
+    _debugText = text ? text : "";
+    _debug = true;
+}
+
+void Interface::drawDebug()
+{
+    if (_debugText.empty())
+        return;
+
+    constexpr int padding = 8;
+    constexpr int lineSpacing = 2;
+    const SDL_Color debugColor = {255, 0, 255, 255};
+    size_t lineStart = 0;
+    int y = padding;
+
+    while (lineStart <= _debugText.size())
+    {
+        size_t lineEnd = _debugText.find('\n', lineStart);
+        std::string line = _debugText.substr(lineStart, lineEnd - lineStart);
+        if (_textDebug.prepare(_renderer, line, debugColor))
+            _textDebug.draw(_renderer, padding, y);
+        y += _textDebug.height + lineSpacing;
+
+        if (lineEnd == std::string::npos)
+            break;
+
+        lineStart = lineEnd + 1;
+    }
 }

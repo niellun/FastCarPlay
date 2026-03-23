@@ -23,12 +23,12 @@
 #define WRITE_QUEUE_SIZE 256
 #define ENCRYPTION_BASE "SkBRDy3gmrw1ieH0"
 
-class Connector : public IMessageReceiver
+class Connection : public IMessageReceiver
 {
 
 public:
-    Connector();
-    virtual ~Connector();
+    Connection();
+    virtual ~Connection();
 
     void start(atomic<int8_t> *statusHandler);
     void stop();
@@ -49,8 +49,8 @@ private:
     void setEncryption(bool enabled);
     bool fail(int status, const char *msg);
     bool state(u_int8_t state);
-    void onConnect();
-    void onDisconnect();
+    void onDeviceConnect();
+    void onDeviceDisconnect();
 
     Recorder _recorder;
     AESCipher *_cipher;

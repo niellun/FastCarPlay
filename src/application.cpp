@@ -1,6 +1,7 @@
 #include "application.h"
 
 #include <SDL2/SDL_ttf.h>
+#include <cstdio>
 
 #include "struct/video_buffer.h"
 #include "common/logger.h"
@@ -41,6 +42,8 @@ Application::Application(/* args */) : _window(nullptr),
                                        _active(true)
 {
     log_v("Creating");
+
+    _debug = Settings::debugOverlay;
 
     if (!setAudioDriver())
         throw std::runtime_error("Unsupported audio driver " + std::string(Settings::audioDriver.value));
@@ -120,10 +123,7 @@ void Application::start(const char *title)
     }
 
     log_v("Starting");
-    if (Settings::doubleBuffer)
-        loop<VideoBufferDouble>();
-    else
-        loop<VideoBuffer>();
+    loop();
     log_v("Stopped");
 }
 
@@ -190,6 +190,11 @@ bool Application::processSystemEvent(const SDL_Event &e)
         case SDLK_q:
         {
             _active = false;
+            return true;
+        }
+        case SDLK_d:
+        {
+            _debug = !_debug;
             return true;
         }
         }
@@ -278,7 +283,6 @@ bool Application::processFrameEvents(AtomicQueue<Message> &queue, Renderer &rend
     return result;
 }
 
-template <class Buffer>
 void Application::loop()
 {
     // Prepare home screen
@@ -298,12 +302,11 @@ void Application::loop()
         SDL_ShowWindow(_window);
     interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN);
 
-    Buffer videoBuffer;
-    Connector protocol;
-    Decoder<Buffer> decoder;
+    Connection protocol;
+    Decoder decoder;
     PcmAudio audioMain("main"), audioAux("aux");
 
-    decoder.start(&protocol.videoStream, videoBuffer, AV_CODEC_ID_H264);
+    decoder.start(&protocol.videoStream, AV_CODEC_ID_H264);
     audioMain.start(&protocol.audioStreamMain);
     audioAux.start(&protocol.audioStreamAux, &audioMain);
     protocol.start(&_state.deviceStatus);
@@ -314,9 +317,14 @@ void Application::loop()
     uint32_t frameid = 0;
     uint32_t latestFrameid = 0;
     uint32_t frameTargetTime = Settings::fps > 0 ? 1000 / Settings::fps : 1000;
+    uint32_t delay = 0;
+    uint32_t dropframes = 0;
     int skipEvents = 0;
+    int frameTime = 0;
     while (_active)
     {
+        bool late = false;
+
         if (_state.deviceStatus != _state.previousdeviceStatus)
         {
             // On connect/disconnect
@@ -330,24 +338,36 @@ void Application::loop()
             if (_state.deviceStatus == PROTOCOL_STATUS_CONNECTED)
             {
                 decoder.flush();
-                videoBuffer.reset();
+                decoder.buffer.reset();
             }
             _state.previousdeviceStatus = _state.deviceStatus;
         }
 
         if (_state.deviceStatus == PROTOCOL_STATUS_CONNECTED && _state.showVideo)
         {
-            if (videoBuffer.latest(&frame, &frameid) && frame && (frameid != latestFrameid || _state.dirty))
+            delay = 0;
+            while (!_state.dirty && decoder.buffer.latestId() == latestFrameid && ++delay < frameTargetTime)
             {
-                if (interface.render(frame))
+                SDL_Delay(1);
+            }
+
+            if (decoder.buffer.consume(&frame, &frameid))
+            {
+                bool newFrame = frameid != latestFrameid;
+                if (newFrame || _state.dirty)
                 {
-                    _state.frameRendered = true;
-                    if (!_state.dirty && (frameid != latestFrameid + 1))
-                        log_d("Frame drop %d on %d", frameid - latestFrameid - 1, frameid);
-                    latestFrameid = frameid;
-                    _state.dirty = false;
+                    if (interface.render(frame))
+                    {
+                        _state.frameRendered = true;
+                        _state.dirty = false;
+                        if (latestFrameid > 0 && frameid - latestFrameid > 1)
+                        {
+                            dropframes += frameid - latestFrameid - 1;
+                            log_d("Frame drop %d on %d total %d", frameid - latestFrameid - 1, frameid, dropframes);
+                        }
+                        latestFrameid = frameid;
+                    }
                 }
-                videoBuffer.consume();
             }
 
             if (_state.requestFrame > 0 && Settings::forceRedraw > 0)
@@ -372,29 +392,51 @@ void Application::loop()
         }
         else
         {
-            if (latestFrameid < 0 || latestFrameid == videoBuffer.latestId() || ++skipEvents > Settings::eventsSkip)
+            late = decoder.buffer.latestId() - latestFrameid > 1;
+            if(!late || ++skipEvents > Settings::eventsSkip)
             {
-                skipEvents = 0;
                 if (processFrameEvents(protocol.writeQueue, interface) && Settings::forceRedraw > 0)
                 {
                     _state.requestFrame = 1;
                 }
+                skipEvents = 0;
             }
+        }
+
+        if (_debug)
+        {
+            char debugBuffer[256];
+            std::snprintf(debugBuffer, sizeof(debugBuffer),
+                          "FRAME: %u / %u [%d] droped %d\n"
+                          "TIME: %d delay %d\n"
+                          "VIDEO: %u\n"
+                          "AUDIO-MAIN: %u\n"
+                          "AUDIO-AUX: %u\n"
+                          "OUT: %u",
+                          latestFrameid,
+                          decoder.buffer.latestId(),
+                          decoder.buffer.latestId() - latestFrameid, dropframes,
+                          frameTime, delay,
+                          protocol.videoStream.count(),
+                          protocol.audioStreamMain.count(),
+                          protocol.audioStreamAux.count(),
+                          protocol.writeQueue.count());
+            interface.debug(debugBuffer);
         }
 
         if (_active && !Settings::vsync)
         {
             Uint32 frameEnd = SDL_GetTicks();
-            int frameDelay = frameTargetTime - (frameEnd - frameStart);
-            if (latestFrameid > 0 && latestFrameid != videoBuffer.latestId())
+            frameTime = frameEnd - frameStart;
+            int frameDelay = frameTargetTime - frameTime;
+            if (frameDelay <= 0 || decoder.buffer.latestId() - latestFrameid > 1)
             {
-                SDL_Delay(1);
                 frameStart = frameEnd;
             }
             else
             {
-                SDL_Delay(frameDelay > 0 ? frameDelay : 1);
-                frameStart += frameTargetTime;
+                SDL_Delay(frameDelay);
+                frameStart += frameDelay;
             }
         }
     }

@@ -165,20 +165,6 @@ Renderer::~Renderer()
     clear();
 }
 
-bool Renderer::render(AVFrame *frame)
-{
-    if (_render == nullptr || frame->width != _textureWidth || frame->height != _textureHeight)
-    {
-        clear();
-        if (!prepare(frame, Settings::width, Settings::height))
-            return false;
-    }
-    (this->*_render)(frame);
-    SDL_RenderCopy(_renderer, _texture, &_sourceRect, nullptr);
-    SDL_RenderPresent(_renderer);
-    return true;
-}
-
 bool Renderer::prepareTexture(uint32_t format, int width, int height)
 {
     _texture = SDL_CreateTexture(_renderer, format,

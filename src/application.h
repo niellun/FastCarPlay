@@ -5,7 +5,7 @@
 
 #include "protocol/protocol_const.h"
 
-#include "connector.h"
+#include "protocol/connection.h"
 #include "renderer.h"
 
 #define REDRAW_REQUEST 5
@@ -36,7 +36,6 @@ private:
     bool processSystemEvent(const SDL_Event &e);
     bool processFrameEvents(AtomicQueue<Message> &queue, Renderer &renderer);
 
-    template <class Buffer>
     void loop();
 
     SDL_Window *_window;
@@ -46,6 +45,7 @@ private:
     State _state;
     int _width;
     int _height;
+    bool _debug;
 };
 
 #endif /* SRC_APPLICATION */

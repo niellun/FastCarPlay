@@ -50,16 +50,22 @@ public:
     Renderer(SDL_Renderer *renderer);
     ~Renderer();
 
-    bool render(AVFrame *frame);
     float xScale;
     float yScale;
 
 protected:
-    SDL_Renderer *_renderer;
-
-private:
     using DrawFuncType = void (Renderer::*)(AVFrame *);
 
+    SDL_Renderer *_renderer;
+    void clear();
+    bool prepare(AVFrame *frame, int targetWidth, int targetHeight);
+    SDL_Texture *_texture;
+    int _textureWidth;
+    int _textureHeight;
+    SDL_Rect _sourceRect;
+    DrawFuncType _render;
+
+private:    
     struct FormatMapping
     {
         AVPixelFormat avFormat;
@@ -68,10 +74,7 @@ private:
         std::string name;
     };
 
-    void clear();    
-    bool prepare(AVFrame *frame, int targetWidth, int targetHeight);    
     bool prepareTexture(uint32_t format, int width, int height);
-
     void rgb(AVFrame *frame);
     void nv(AVFrame *frame);
     void nvAlternative(AVFrame *frame);
@@ -79,11 +82,6 @@ private:
     void yuvAlternative(AVFrame *frame);
     void scale(AVFrame *frame);
 
-    SDL_Texture *_texture;
-    int _textureWidth;
-    int _textureHeight;
-    SDL_Rect _sourceRect;
-    DrawFuncType _render;
     SwsContext *_sws;
     AVFrame *_frame;
     FormatMapping _mapping[4] = {

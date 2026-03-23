@@ -5,32 +5,32 @@
 #include "common/functions.h"
 #include "settings.h"
 
-template <class Buffer>
-Decoder<Buffer>::Decoder()
-    : _context(nullptr)
+Decoder::Decoder()
+    : buffer(Settings::renderingBuffer),
+      _context(nullptr),
+      _active(false),
+      _data(nullptr)
 {
 }
 
-template <class Buffer>
-Decoder<Buffer>::~Decoder()
+Decoder::~Decoder()
 {
     stop();
 }
 
-template <class Buffer>
-void Decoder<Buffer>::start(AtomicQueue<Message> *data, Buffer &vb, AVCodecID codecId)
+void Decoder::start(AtomicQueue<Message> *data, AVCodecID codecId)
 {
     if (_active)
         stop();
 
-    _vb = &vb;
+    buffer.reset();
     _data = data;
     _codecId = codecId;
     _active = true;
     _thread = std::thread(&Decoder::runner, this);
 }
-template <class Buffer>
-void Decoder<Buffer>::stop()
+
+void Decoder::stop()
 {
     if (!_active)
         return;
@@ -40,16 +40,14 @@ void Decoder<Buffer>::stop()
         _thread.join();
 }
 
-template <class Buffer>
-void Decoder<Buffer>::flush()
+void Decoder::flush()
 {
     if (_context)
         avcodec_flush_buffers(_context);
 }
 
 // Initialize and select the best decoder (try HW first, then SW)
-template <class Buffer>
-AVCodecContext *Decoder<Buffer>::load_codec(AVCodecID codec_id)
+AVCodecContext *Decoder::load_codec(AVCodecID codec_id)
 {
     void *iter = nullptr;
     const AVCodec *codec = nullptr;
@@ -122,8 +120,7 @@ AVCodecContext *Decoder<Buffer>::load_codec(AVCodecID codec_id)
     return result;
 }
 
-template <class Buffer>
-void Decoder<Buffer>::runner()
+void Decoder::runner()
 {
     // Set thread name
     setThreadName("video-decoder");
@@ -166,8 +163,7 @@ void Decoder<Buffer>::runner()
     _context = nullptr;
 }
 
-template <class Buffer>
-void Decoder<Buffer>::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame)
+void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPacket *packet, AVFrame *frame)
 {
     uint32_t counter = 0;
 
@@ -214,14 +210,16 @@ void Decoder<Buffer>::loop(AVCodecContext *context, AVCodecParserContext *parser
                 log_w("Can't decode packet > %s", avErrorText(send_ret).c_str());
                 continue;
             }
-
             // Receive decoded frames
             while (avcodec_receive_frame(context, frame) == 0 && _active)
             {
-                AVFrame *out = _vb->write(counter++);
-                av_frame_unref(out);
-                av_frame_move_ref(out, frame);
-                _vb->commit();
+                AVFrame *out = buffer.write(counter++);
+                if (out)
+                {
+                    av_frame_unref(out);
+                    av_frame_move_ref(out, frame);
+                    buffer.commit();
+                }
             }
         }
     }
@@ -232,13 +230,13 @@ void Decoder<Buffer>::loop(AVCodecContext *context, AVCodecParserContext *parser
         avcodec_send_packet(context, nullptr);
         while (avcodec_receive_frame(context, frame) == 0)
         {
-            AVFrame *out = _vb->write(counter++);
-            av_frame_unref(out);
-            av_frame_move_ref(out, frame);
-            _vb->commit();
+            AVFrame *out = buffer.write(counter++);
+            if (out)
+            {
+                av_frame_unref(out);
+                av_frame_move_ref(out, frame);
+                buffer.commit();
+            }
         }
     }
 }
-
-template class Decoder<VideoBuffer>;
-template class Decoder<VideoBufferDouble>;

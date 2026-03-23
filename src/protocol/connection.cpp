@@ -1,4 +1,4 @@
-#include "connector.h"
+#include "connection.h"
 
 #include <stdexcept>
 #include <iostream>
@@ -10,7 +10,7 @@
 #include "common/functions.h"
 #include "settings.h"
 
-Connector::Connector()
+Connection::Connection()
     : writeQueue(WRITE_QUEUE_SIZE),
       videoStream(Settings::videoQueue),
       audioStreamMain(Settings::audioQueue),
@@ -44,10 +44,12 @@ Connector::Connector()
         _cipher = nullptr;
         log_w("Can't initialise cypher for encryption > Unknown error");
     }
+    log_v("Created");
 }
 
-Connector::~Connector()
+Connection::~Connection()
 {
+    log_v("Destroying");
     stop();
 
     if (_cipher)
@@ -61,23 +63,28 @@ Connector::~Connector()
         libusb_exit(_context);
         _context = nullptr;
     }
+    log_v("Destroyed");
 }
 
-void Connector::start(atomic<int8_t>* statusHandler)
+void Connection::start(atomic<int8_t> *statusHandler)
 {
     _statusHandler = statusHandler;
 
     if (_active)
         return;
 
+    log_v("Starting");
+
     _active = true;
-    _thread = std::thread(&Connector::mainLoop, this);
+    _thread = std::thread(&Connection::mainLoop, this);
 }
 
-void Connector::stop()
+void Connection::stop()
 {
     if (!_active)
         return;
+
+    log_v("Stopping");
 
     _active = false;
     writeQueue.notify();
@@ -86,14 +93,16 @@ void Connector::stop()
     if (_thread.joinable())
         _thread.join();
 
-    _statusHandler = nullptr;        
+    _statusHandler = nullptr;
 }
 
-void Connector::mainLoop()
+void Connection::mainLoop()
 {
     // Set thread name
     setThreadName("usb-write");
     state(PROTOCOL_STATUS_LINKING);
+
+    log_d("USB writing thread started");
 
     while (_active)
     {
@@ -119,12 +128,12 @@ void Connector::mainLoop()
                 state(PROTOCOL_STATUS_ONLINE);
                 log_i("Device connected %d:%d speed: %d", libusb_get_bus_number(device), libusb_get_device_address(device), libusb_get_device_speed(device));
                 _reader.start(_context, handler, epIn, this);
-                onConnect();
+                onDeviceConnect();
 
                 writeLoop(handler, epOut);
 
                 _connected = false;
-                onDisconnect();
+                onDeviceDisconnect();
                 _reader.stop();
             }
 
@@ -136,7 +145,7 @@ void Connector::mainLoop()
     }
 }
 
-void Connector::writeLoop(libusb_device_handle *handler, uint8_t ep)
+void Connection::writeLoop(libusb_device_handle *handler, uint8_t ep)
 {
     while (_active && _reader.active())
     {
@@ -179,7 +188,7 @@ void Connector::writeLoop(libusb_device_handle *handler, uint8_t ep)
     }
 }
 
-libusb_device *Connector::link(libusb_device_handle *handler, uint8_t *epIn, uint8_t *epOut)
+libusb_device *Connection::link(libusb_device_handle *handler, uint8_t *epIn, uint8_t *epOut)
 {
     state(PROTOCOL_STATUS_LINKING);
 
@@ -210,7 +219,7 @@ libusb_device *Connector::link(libusb_device_handle *handler, uint8_t *epIn, uin
     return device;
 }
 
-void Connector::setEncryption(bool enabled)
+void Connection::setEncryption(bool enabled)
 {
     if (!enabled)
     {
@@ -227,7 +236,7 @@ void Connector::setEncryption(bool enabled)
     _ecnrypt = true;
 }
 
-bool Connector::fail(int status, const char *msg)
+bool Connection::fail(int status, const char *msg)
 {
     if (status == 0)
         return false;
@@ -236,7 +245,7 @@ bool Connector::fail(int status, const char *msg)
     return true;
 }
 
-bool Connector::state(u_int8_t state)
+bool Connection::state(u_int8_t state)
 {
     if (state == _state)
         return false;
@@ -256,7 +265,7 @@ bool Connector::state(u_int8_t state)
         return true;
     }
 
-    if (state == PROTOCOL_STATUS_NO_DEVICE && (_nodeviceCount++ > 10 || _state >= PROTOCOL_STATUS_ONLINE))
+    if (state == PROTOCOL_STATUS_NO_DEVICE && (_nodeviceCount++ > 30 || _state >= PROTOCOL_STATUS_ONLINE))
     {
         _failCount = 0;
         _state = state;
@@ -276,7 +285,7 @@ bool Connector::state(u_int8_t state)
     return false;
 }
 
-void Connector::onConnect()
+void Connection::onDeviceConnect()
 {
     int syncTime = std::time(nullptr);
     int drivePosition = Settings::leftDrive ? 0 : 1; // 0==left, 1==right
@@ -314,7 +323,7 @@ void Connector::onConnect()
     width = Settings::width * scale;
     height = Settings::height * scale;
 
-    log_i("Requesting carplay %dx%d@%d, android auto %dx%d", Settings::width.value, Settings::height.value, Settings::fps.value, width, height);
+    log_i("Requesting carplay %dx%d@%d, android auto %dx%d", Settings::width.value, Settings::height.value, Settings::sourceFps.value, width, height);
 
     if (Settings::encryption)
     {
@@ -327,7 +336,7 @@ void Connector::onConnect()
     if (Settings::dpi > 0)
         send(Message::File("/tmp/screen_dpi", Settings::dpi));
     send(Message::File("/etc/android_work_mode", 1));
-    send(Message::Init(Settings::width, Settings::height, Settings::fps));
+    send(Message::Init(Settings::width, Settings::height, Settings::sourceFps));
     send(Message::String(
         CMD_JSON_CONTROL,
         "{\"syncTime\":%d,\"mediaDelay\":%d,\"drivePosition\":%d,"
@@ -347,19 +356,16 @@ void Connector::onConnect()
     send(Message::Control(Settings::bluetoothAudio ? 22 : 23));
     if (Settings::autoconnect)
         send(Message::Control(1002));
-
-    if (Settings::onConnect.value.length() > 1)
-        execute(Settings::onConnect.value.c_str());
 }
 
-void Connector::onDisconnect()
+void Connection::onDeviceDisconnect()
 {
     _recorder.stop();
     if (Settings::onDisconnect.value.length() > 1)
         execute(Settings::onDisconnect.value.c_str());
 }
 
-void Connector::onMessage(std::unique_ptr<Message> message)
+void Connection::onMessage(std::unique_ptr<Message> message)
 {
     Status s = message->decrypt(_cipher);
     if (s.failed())
@@ -388,12 +394,21 @@ void Connector::onMessage(std::unique_ptr<Message> message)
         break;
 
     case CMD_PLUGGED:
+    {
         state(PROTOCOL_STATUS_CONNECTED);
+        if (Settings::onConnect.value.length() > 1)
+            execute(Settings::onConnect.value.c_str());
         break;
+    }
 
     case CMD_UNPLUGGED:
+    {
         state(PROTOCOL_STATUS_ONLINE);
+        _recorder.stop();
+        if (Settings::onDisconnect.value.length() > 1)
+            execute(Settings::onDisconnect.value.c_str());
         break;
+    }
 
     case CMD_VIDEO_DATA:
     {

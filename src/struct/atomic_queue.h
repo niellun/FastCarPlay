@@ -14,7 +14,7 @@ template <typename T>
 class AtomicQueue
 {
 public:
-    AtomicQueue(size_t size)
+    AtomicQueue(uint16_t size)
         : _size(size), _data(new unique_ptr<T>[size]), _first(0), _last(0), _count(0)
     {
     }
@@ -69,12 +69,12 @@ public:
         return item;
     }
 
-    bool has(size_t count)
+    bool has(uint16_t count)
     {
         return _count.load(std::memory_order_acquire) >= count;
     }
 
-    bool wait(atomic<bool> &waitFlag, size_t count = 0)
+    bool wait(atomic<bool> &waitFlag, uint16_t count = 0)
     {
         unique_lock<std::mutex> lock(_mtx);
 
@@ -83,7 +83,7 @@ public:
         return waitFlag.load(std::memory_order_acquire);
     }
 
-    bool waitFor(atomic<bool> &waitFlag, uint32_t timeoutMs, size_t count = 0)
+    bool waitFor(atomic<bool> &waitFlag, uint32_t timeoutMs, uint16_t count = 0)
     {
         unique_lock<std::mutex> lock(_mtx);
         _lock.wait_for(lock, std::chrono::milliseconds(timeoutMs), [&]
@@ -104,14 +104,14 @@ public:
         _lock.notify_all();
     }
 
-    size_t count() { return _count.load(std::memory_order_acquire); }
+    uint16_t count() { return _count.load(std::memory_order_acquire); }
 
 private:
-    size_t _size;
+    uint16_t _size;
     unique_ptr<unique_ptr<T>[]> _data;
-    size_t _first;
-    size_t _last;
-    atomic<size_t> _count;
+    uint16_t _first;
+    uint16_t _last;
+    atomic<uint16_t> _count;
     mutex _mtx;
     condition_variable _lock;
 };

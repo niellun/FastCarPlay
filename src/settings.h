@@ -16,8 +16,8 @@ public:
     static inline Setting<int> productid{"product-id", 5408};
     static inline Setting<int> width{"width", 720};
     static inline Setting<int> height{"height", 576};
-    static inline Setting<int> sourceFps{"source-fps", 50};
-    static inline Setting<int> fps{"fps", 50};
+    static inline Setting<int> sourceFps{"source-fps", 60};
+    static inline Setting<int> fps{"fps", 60};
     static inline Setting<int> screenMode{"window-mode", 0};
     static inline Setting<bool> cursor{"cursor", false};
     static inline Setting<int> loglevel{"log-level", 2};
@@ -39,12 +39,12 @@ public:
     static inline Setting<int> fontSize{"font-size", 30};
     static inline Setting<bool> vsync{"vsync", false};
     static inline Setting<bool> hwDecode{"hw-decode", true};
-    static inline Setting<bool> doubleBuffer{"double-buffered", true};
+    static inline Setting<int> renderingBuffer{"rendering-buffer", 5};
+    static inline Setting<int> eventsSkip{"draw-skip-events", 3};
     static inline Setting<int> forceRedraw{"force-redraw", 0};
-    static inline Setting<int> eventsSkip{"draw-skip-events", 0};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<std::string> renderDriver{"renderer-driver", ""};    
-    static inline Setting<bool> alternativeRendering{"alternative-rendering", true};    
+    static inline Setting<bool> alternativeRendering{"alternative-rendering", false};    
     static inline Setting<bool> fastScale{"fast-render-scale", false};
     static inline Setting<int> usbQueue{"async-usb-calls", 16};
     static inline Setting<int> usbTransferSize{"usb-buffer-size", 2048};         
@@ -87,6 +87,7 @@ public:
     // Debug section
     static inline Setting<bool> codecLowDelay{"decode-low-delay", true};
     static inline Setting<bool> codecFast{"decode-fast", true};
+    static inline Setting<bool> debugOverlay{"debug-overlay", false};
 
     static bool load(const std::string &filename);
     static void print();

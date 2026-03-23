@@ -13,17 +13,21 @@ extern "C"
 class VideoBuffer
 {
 public:
-    VideoBuffer()
+    VideoBuffer(int8_t size) : _reading(-1), _writing(-1), _latest(-1), _size(size), _frames(nullptr), _ids(nullptr)
     {
-        _writing = 0;
-        _reading.store(-1);
-        _latest.store(-1);
-        for (uint8_t i = 0; i < 3; ++i)
+        if (size < 3)
+            throw std::runtime_error("Minimum rendering buffer size is 3");
+
+        _frames = new AVFrame *[_size]();
+        _ids = new uint32_t[_size]();
+
+        for (uint8_t i = 0; i < _size; ++i)
         {
             _ids[i] = 0;
             _frames[i] = av_frame_alloc();
             if (!_frames[i])
             {
+                dispose();
                 throw std::runtime_error("Failed to allocate AVFrame");
             }
         }
@@ -31,14 +35,7 @@ public:
 
     ~VideoBuffer() noexcept
     {
-        for (uint8_t i = 0; i < 3; ++i)
-        {
-            if (_frames[i])
-            {
-                av_frame_free(&_frames[i]);
-                _frames[i] = nullptr;
-            }
-        }
+        dispose();
     }
 
     uint32_t latestId() const noexcept
@@ -49,34 +46,38 @@ public:
         return _ids[static_cast<uint8_t>(index)];
     }
 
-    bool latest(AVFrame **frame, uint32_t *id) noexcept
+    bool consume(AVFrame **frame, uint32_t *id) noexcept
     {
-        const int8_t index = _latest.load(std::memory_order_acquire);
-        _reading.store(index, std::memory_order_seq_cst);
+        const int8_t latest = _latest.load(std::memory_order_acquire);
+        int8_t index = _reading.load(std::memory_order_relaxed);
+        if (index != latest)
+        {
+            index++;
+            if (index == _size)
+                index = 0;
+            _reading.store(index, std::memory_order_relaxed);
+        }
+
         if (index == -1)
             return false;
+
         const uint8_t slot = static_cast<uint8_t>(index);
         *frame = _frames[slot];
         *id = _ids[slot];
         return true;
     }
 
-    void consume() noexcept
-    {
-        _reading.store(-1, std::memory_order_seq_cst);
-    }
-
     AVFrame *write(uint32_t id) noexcept
     {
-        int8_t index = _writing;
-        while (index == _reading.load(std::memory_order_seq_cst) ||
-               index == _latest.load(std::memory_order_relaxed))
+        int8_t index = _writing.load(std::memory_order_relaxed) + 1;
+        if (index == _size)
+            index = 0;
+        if (index == _reading.load(std::memory_order_relaxed))
         {
-            ++index;
-            if (index == 3)
-                index = 0;
+            return nullptr;
         }
-        _writing = index;
+        _writing.store(index, std::memory_order_relaxed);
+
         const uint8_t slot = static_cast<uint8_t>(index);
         _ids[slot] = id;
         return _frames[slot];
@@ -84,125 +85,47 @@ public:
 
     void commit() noexcept
     {
-        _latest.store(_writing, std::memory_order_release);
+        // Publish the frame contents and id written into the selected slot.
+        _latest.store(_writing.load(std::memory_order_relaxed), std::memory_order_release);
     }
 
     void reset() noexcept
     {
-        _reading.store(-1);
-        _latest.store(-1);
+        _reading.store(-1, std::memory_order_relaxed);
+        _writing.store(-1, std::memory_order_relaxed);
+        _latest.store(-1, std::memory_order_release);
     }
 
 private:
-    std::atomic<int8_t> _latest;
-    std::atomic<int8_t> _reading;
-    int8_t _writing;
-    AVFrame *_frames[3];
-    uint32_t _ids[3];
-};
-
-class VideoBufferDouble
-{
-public:
-    VideoBufferDouble()
+    void dispose()
     {
-        _writing = 0;
-        _oldest.store(-1);
-        _reading.store(-1);
-        _latest.store(-1);
-        for (uint8_t i = 0; i < 4; ++i)
+        if (_frames)
         {
-            _ids[i] = 0;
-            _frames[i] = av_frame_alloc();
-            if (!_frames[i])
+            for (uint8_t i = 0; i < _size; ++i)
             {
-                throw std::runtime_error("Failed to allocate AVFrame");
+                if (_frames[i])
+                {
+                    av_frame_free(&_frames[i]);
+                    _frames[i] = nullptr;
+                }
             }
+            delete[] _frames;
+            _frames = nullptr;
         }
-    }
 
-    ~VideoBufferDouble() noexcept
-    {
-        for (uint8_t i = 0; i < 4; ++i)
+        if (_ids)
         {
-            if (_frames[i])
-            {
-                av_frame_free(&_frames[i]);
-                _frames[i] = nullptr;
-            }
+            delete[] _ids;
+            _ids = nullptr;
         }
     }
 
-    uint32_t latestId() const noexcept
-    {
-        const int8_t index = _latest.load(std::memory_order_acquire);
-        if (index == -1)
-            return 0;
-        return _ids[static_cast<uint8_t>(index)];
-    }
-
-    bool latest(AVFrame **frame, uint32_t *id) noexcept
-    {
-        int8_t index = _oldest.load(std::memory_order_acquire);
-        _reading.store(index, std::memory_order_seq_cst);
-        if (index == -1)
-        {
-            index = _latest.load(std::memory_order_acquire);
-            _reading.store(index, std::memory_order_seq_cst);
-            if (index == -1)
-                return false;
-        }
-        const uint8_t slot = static_cast<uint8_t>(index);
-        *frame = _frames[slot];
-        *id = _ids[slot];
-        return true;
-    }
-
-    void consume() noexcept
-    {
-        const int8_t reading = _reading.load(std::memory_order_seq_cst);
-        if (_oldest.load(std::memory_order_relaxed) == reading)
-            _oldest.store(-1, std::memory_order_relaxed);
-        _reading.store(-1, std::memory_order_seq_cst);
-    }
-
-    AVFrame *write(uint32_t id) noexcept
-    {
-        int8_t index = _writing;
-        while (index == _reading.load(std::memory_order_seq_cst) ||
-               index == _latest.load(std::memory_order_relaxed) ||
-               index == _oldest.load(std::memory_order_relaxed))
-        {
-            ++index;
-            if (index == 4)
-                index = 0;
-        }
-        _writing = index;
-        const uint8_t slot = static_cast<uint8_t>(index);
-        _ids[slot] = id;
-        return _frames[slot];
-    }
-
-    void commit() noexcept
-    {
-        _oldest.store(_latest.load(std::memory_order_relaxed), std::memory_order_release);
-        _latest.store(_writing, std::memory_order_release);
-    }
-
-    void reset() noexcept
-    {
-        _oldest.store(-1);
-        _reading.store(-1);
-        _latest.store(-1);
-    }
-
-private:
-    std::atomic<int8_t> _oldest;
-    std::atomic<int8_t> _latest;
     std::atomic<int8_t> _reading;
-    int8_t _writing;
-    AVFrame *_frames[4];
-    uint32_t _ids[4];
+    std::atomic<int8_t> _writing;
+    std::atomic<int8_t> _latest;
+    int8_t _size;
+    AVFrame **_frames;
+    uint32_t *_ids;
 };
 
 #endif /* SRC_STRUCT_VIDEO_BUFFER */
