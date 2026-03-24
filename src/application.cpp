@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL_ttf.h>
 #include <cstdio>
+#include <sstream>
 
 #include "struct/video_buffer.h"
 #include "common/logger.h"
@@ -393,7 +394,7 @@ void Application::loop()
         else
         {
             late = decoder.buffer.latestId() - latestFrameid > 1;
-            if(!late || ++skipEvents > Settings::eventsSkip)
+            if (!late || ++skipEvents > Settings::eventsSkip)
             {
                 if (processFrameEvents(protocol.writeQueue, interface) && Settings::forceRedraw > 0)
                 {
@@ -405,18 +406,21 @@ void Application::loop()
 
         if (_debug)
         {
-            char debugBuffer[256];
+            char debugBuffer[512];
             std::snprintf(debugBuffer, sizeof(debugBuffer),
-                          "FRAME: %u / %u [%d] droped %d\n"
-                          "TIME: %d delay %d\n"
+                          "%s\n"
+                          "FRAME: %u / %u [%d] dropped: %d render: %dms / %dms\n"
                           "VIDEO: %u\n"
                           "AUDIO-MAIN: %u\n"
                           "AUDIO-AUX: %u\n"
                           "OUT: %u",
+                          status().c_str(),
                           latestFrameid,
                           decoder.buffer.latestId(),
-                          decoder.buffer.latestId() - latestFrameid, dropframes,
-                          frameTime, delay,
+                          decoder.buffer.latestId() - latestFrameid,
+                          dropframes,
+                          frameTime,
+                          delay,
                           protocol.videoStream.count(),
                           protocol.audioStreamMain.count(),
                           protocol.audioStreamAux.count(),
@@ -443,4 +447,59 @@ void Application::loop()
 
     if (!Settings::isHeadless())
         SDL_HideWindow(_window);
+}
+
+const std::string Application::status() const
+{
+    std::ostringstream out;
+
+    SDL_version compiled{};
+    SDL_VERSION(&compiled);
+    SDL_version linked{};
+    SDL_GetVersion(&linked);
+
+    out << "SDL: v"
+        << static_cast<int>(compiled.major) << '.'
+        << static_cast<int>(compiled.minor) << '.'
+        << static_cast<int>(compiled.patch) << " "
+        << SDL_GetCurrentVideoDriver();
+
+    SDL_Window *window = SDL_GetKeyboardFocus();
+    if (window)
+    {
+        int width = 0;
+        int height = 0;
+        SDL_GetWindowSize(window, &width, &height);
+        out << " " << width << 'x' << height;
+        SDL_Renderer *renderer = SDL_GetRenderer(window);
+        if (renderer)
+        {
+            SDL_RendererInfo info{};
+            if (SDL_GetRendererInfo(renderer, &info) == 0)
+            {
+                out << " " << info.name
+                    << ((info.flags & SDL_RENDERER_ACCELERATED) != 0?" accelerated":"")
+                    << ((info.flags & SDL_RENDERER_PRESENTVSYNC) != 0?" vsync":"");
+            }
+        }
+    }
+    out << " " << SDL_GetCurrentAudioDriver();
+
+    int displayIndex = SDL_GetWindowDisplayIndex(window);
+    if (displayIndex >= 0)
+    {
+        out << "\nSCREEN:";
+        SDL_Rect bounds{};
+        SDL_DisplayMode mode{};
+        SDL_GetDisplayBounds(displayIndex, &bounds);
+        if (SDL_GetCurrentDisplayMode(displayIndex, &mode) == 0)
+        {
+            out << " [" << displayIndex << "] "
+                << bounds.w << 'x' << bounds.h
+                << '@' << mode.refresh_rate
+                << " " << SDL_GetPixelFormatName(mode.format);
+        }
+    }
+
+    return out.str();
 }

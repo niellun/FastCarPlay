@@ -24,7 +24,7 @@ Interface::~Interface()
 
 bool Interface::render(AVFrame *frame)
 {
-    if(!frame)
+    if (!frame)
         return false;
 
     if (_render == nullptr || frame->width != _textureWidth || frame->height != _textureHeight)
@@ -91,7 +91,14 @@ void Interface::drawDebug()
 
     constexpr int padding = 8;
     constexpr int lineSpacing = 2;
-    const SDL_Color debugColor = {255, 0, 255, 255};
+    const SDL_Color debugColor = {0, 255, 255, 255};
+    SDL_BlendMode previousBlendMode;
+    Uint8 previousR, previousG, previousB, previousA;
+    SDL_GetRenderDrawBlendMode(_renderer, &previousBlendMode);
+    SDL_GetRenderDrawColor(_renderer, &previousR, &previousG, &previousB, &previousA);
+    SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 150);
+
     size_t lineStart = 0;
     int y = padding;
 
@@ -100,7 +107,15 @@ void Interface::drawDebug()
         size_t lineEnd = _debugText.find('\n', lineStart);
         std::string line = _debugText.substr(lineStart, lineEnd - lineStart);
         if (_textDebug.prepare(_renderer, line, debugColor))
+        {
+            SDL_Rect backgroundRect = {
+                0,
+                y,
+                static_cast<int>(_textDebug.width * Settings::aspectCorrection) + padding * 2,
+                _textDebug.height};
+            SDL_RenderFillRect(_renderer, &backgroundRect);
             _textDebug.draw(_renderer, padding, y);
+        }
         y += _textDebug.height + lineSpacing;
 
         if (lineEnd == std::string::npos)
@@ -108,4 +123,7 @@ void Interface::drawDebug()
 
         lineStart = lineEnd + 1;
     }
+
+    SDL_SetRenderDrawColor(_renderer, previousR, previousG, previousB, previousA);
+    SDL_SetRenderDrawBlendMode(_renderer, previousBlendMode);
 }

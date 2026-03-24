@@ -35,6 +35,7 @@ private:
     int processKey(SDL_Keysym key);
     bool processSystemEvent(const SDL_Event &e);
     bool processFrameEvents(AtomicQueue<Message> &queue, Renderer &renderer);
+    const std::string status() const;
 
     void loop();
 

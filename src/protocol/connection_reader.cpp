@@ -170,6 +170,7 @@ void ConnectionReader::onUsbRead(libusb_transfer *transfer)
 void ConnectionReader::readLoop()
 {
     setThreadName("usb-read");
+    setThreadPriority(ThreadPriority::Realtime);
     timeval timeout{0, 100000};
 
     log_d("USB reading thread started");
