@@ -13,6 +13,7 @@
 #define FADE_IN_SPEED 0.00001
 #define FADE_OUT_SPEED 0.0001
 #define FADE_ZERO_SEGMENTS 10
+#define AUDIO_RESET_SECONDS 5
 
 struct ChannelConfig
 {

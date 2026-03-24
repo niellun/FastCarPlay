@@ -24,9 +24,9 @@ void Logger::setLevel(int level)
         return;
     }
 
-    if (level > static_cast<int>(Level::Verbose))
+    if (level > static_cast<int>(Level::Protocol))
     {
-        _level = Level::Verbose;
+        _level = Level::Protocol;
         return;
     }
 

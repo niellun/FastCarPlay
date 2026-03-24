@@ -183,6 +183,7 @@ void Connection::writeLoop(libusb_device_handle *handler, uint8_t ep)
 
         int transferred;
         libusb_bulk_transfer(handler, ep, message->header(), message->headerSize(), &transferred, 0);
+        message->setOffset(0);
         if (message->length() > 0)
             libusb_bulk_transfer(handler, ep, message->data(), message->length(), &transferred, 0);
     }

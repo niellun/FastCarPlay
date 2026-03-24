@@ -3,6 +3,7 @@
 #include "protocol/protocol_const.h"
 #include "settings.h"
 #include "common/logger.h"
+#include <time.h>
 
 // Add sample size (buffer size in samples) to ChannelConfig
 ChannelConfig PcmAudio::_configTable[] = {
@@ -24,6 +25,7 @@ PcmAudio::PcmAudio(const char *name) : _name("default"),
 {
     if (name && strlen(name) > 0)
         _name = name;
+    log_v("Created %s", _name.c_str());
 }
 
 PcmAudio::~PcmAudio()
@@ -31,12 +33,14 @@ PcmAudio::~PcmAudio()
     stop();
     if (_thread.joinable())
         _thread.join();
+    log_v("Destroyed %s", _name.c_str());
 }
 
 void PcmAudio::start(AtomicQueue<Message> *data, PcmAudio *fader)
 {
     if (_active)
         stop();
+    log_v("Starting %s", _name.c_str());
     _fader = fader;
     _data = data;
     _active = true;
@@ -47,6 +51,7 @@ void PcmAudio::stop()
 {
     if (!_active)
         return;
+    log_v("Stopping %s", _name.c_str());
     _active = false;
     _data->notify();
 }
@@ -69,13 +74,11 @@ bool PcmAudio::isZero(const Message *msg)
 {
     const uint64_t *p = (const uint64_t *)msg->data();
     int n = msg->length() / 8;
-
     for (int i = 0; i < n; ++i)
     {
         if (p[i] != 0)
             return false;
     }
-
     return true;
 }
 
@@ -83,9 +86,7 @@ void PcmAudio::fade(bool enable)
 {
     _fade.store(enable);
     if (!_playing)
-    {
         _volume = enable ? Settings::audioFade : 1.0;
-    }
 }
 
 void PcmAudio::fade(uint8_t *data, int32_t length)
@@ -95,7 +96,7 @@ void PcmAudio::fade(uint8_t *data, int32_t length)
         return;
 
     int16_t *buf = reinterpret_cast<int16_t *>(data);
-    for (size_t i = 0; i < length / 2; i++)
+    for (int i = 0; i < length / 2; i++)
     {
         if (fade)
         {
@@ -116,15 +117,29 @@ void PcmAudio::play(SDL_AudioDeviceID device, ChannelConfig config, int32_t segm
 {
     uint8_t zeroSegments = 0;
     bool nonZero = false;
+
     int prefill = config.channels == 1 ? Settings::audioDelayCall : Settings::audioDelay;
     int segmentTimeMs = 1000.0 * segmentSize / (config.rate * config.channels * 2.0);
+    int waitTimeMs = (prefill + 1) * segmentTimeMs;
+    log_i("Prepare to play %s %dkHz %s chunk %d ~%dms prefill %d ~%dms", _name.c_str(),
+          config.rate,
+          (config.channels == 2 ? "stereo" : "mono"),
+          segmentSize,
+          segmentTimeMs,
+          prefill,
+          waitTimeMs);
 
-    log_i("Prepare to play %s %dkHz %s prefill %d ~%dms chunk %d", _name.c_str(), config.rate, (config.channels == 2 ? "stereo" : "mono"), prefill, segmentTimeMs, segmentSize);
-
-    if (!_data->waitFor(_active, segmentTimeMs * (prefill + 1) * 3, prefill))
+    if (!_data->waitFor(_active, AUDIO_RESET_SECONDS * 1000, prefill))
     {
         _data->clear();
-        log_w("Not enough data to play %s %dkHz %s prefill %d ~%dms chunk %d", _name.c_str(), config.rate, (config.channels == 2 ? "stereo" : "mono"), prefill, segmentTimeMs, segmentSize);
+        log_w("Not enough data to play %s %dkHz %s chunk %d ~%dms prefill %d ~%dms",
+              _name.c_str(),
+              config.rate,
+              (config.channels == 2 ? "stereo" : "mono"),
+              segmentSize,
+              segmentTimeMs,
+              prefill,
+              waitTimeMs);
         return;
     }
 
@@ -142,11 +157,15 @@ void PcmAudio::play(SDL_AudioDeviceID device, ChannelConfig config, int32_t segm
             return;
 
         fade(segment->data(), segment->length());
+
         SDL_QueueAudio(device, segment->data(), segment->length());
 
-        if (!_playing)
+        if (!_playing && prefill-- <= 0)
         {
-            log_d("Start playing %s %dkHz %s", _name.c_str(), config.rate, (config.channels == 2 ? "stereo" : "mono"));
+            log_d("Start playing %s %dkHz %s",
+                  _name.c_str(),
+                  config.rate,
+                  (config.channels == 2 ? "stereo" : "mono"));
             SDL_PauseAudioDevice(device, 0);
             _playing = true;
         }
@@ -169,7 +188,7 @@ void PcmAudio::play(SDL_AudioDeviceID device, ChannelConfig config, int32_t segm
             }
         }
 
-        if (!_data->waitFor(_active, segmentTimeMs * 3))
+        if (!_data->waitFor(_active, waitTimeMs))
             return;
     }
 }
@@ -179,11 +198,12 @@ void PcmAudio::loop()
     std::string threadName = "audio-" + _name;
     setThreadName(threadName.c_str());
 
-    log_d("Audio %s thread started", _name.c_str());
+    log_d("Started thread %s", _name.c_str());
 
     SDL_AudioDeviceID device = 0;
     SDL_AudioSpec spec;
 
+    time_t playEnd = time(NULL);
     while (_data->wait(_active))
     {
         const Message *segment = _data->peek();
@@ -213,12 +233,19 @@ void PcmAudio::loop()
             device = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
             if (device == 0)
             {
-                log_w("Failed to open audio %s > %s", _name.c_str(), SDL_GetError());
+                log_w("Failed to open audio %s %dkHz %s samples %d > %s",
+                      _name.c_str(),
+                      config.rate,
+                      (config.channels == 2 ? "stereo" : "mono"),
+                      Settings::audioBuffer * config.scale, SDL_GetError());
                 SDL_Delay(100);
                 continue;
             }
             _config = config;
         }
+
+        if (difftime(time(NULL), playEnd) > AUDIO_RESET_SECONDS)
+            SDL_ClearQueuedAudio(device);
 
         if (_fader)
             _fader->fade(true);
@@ -227,13 +254,19 @@ void PcmAudio::loop()
         if (_fader)
             _fader->fade(false);
         SDL_PauseAudioDevice(device, 1);
-        log_i("Stop playing %s", _name.c_str());
+        playEnd = time(NULL);
+        log_d("Stop playing %s %dkHz %s",
+              _name.c_str(),
+              config.rate,
+              (config.channels == 2 ? "stereo" : "mono"));
     }
 
-    if (device)
+    if (device != 0)
     {
         SDL_PauseAudioDevice(device, 1);
         SDL_ClearQueuedAudio(device);
         SDL_CloseAudioDevice(device);
     }
+
+    log_v("Stopped thread %s", _name.c_str());
 }

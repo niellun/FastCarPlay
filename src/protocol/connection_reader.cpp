@@ -25,8 +25,6 @@ ConnectionReader::ConnectionReader()
 
 ConnectionReader::~ConnectionReader()
 {
-    log_v("Destroying");
-
     stop();
 
     for (Context &context : _transfers)
