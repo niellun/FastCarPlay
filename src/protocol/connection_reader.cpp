@@ -12,6 +12,7 @@
 #include "common/threading.h"
 #include "protocol/protocol_const.h"
 #include "libavcodec/defs.h"
+#include "common/functions.h"
 
 ConnectionReader::ConnectionReader()
     : _active(false),
@@ -133,7 +134,7 @@ void ConnectionReader::onUsbRead(libusb_transfer *transfer)
     if (!c->owner->_active)
         return;
 
-    log_p("USB read > status %d length %d", transfer->status, transfer->actual_length);
+    log_p("Read %d [%d]: %s", transfer->actual_length, transfer->status, bytes(transfer->buffer, transfer->actual_length, 40).c_str());
 
     if (transfer->status == LIBUSB_TRANSFER_CANCELLED)
         return;
@@ -197,7 +198,7 @@ void ConnectionReader::processLoop()
 
         if (!message->valid())
         {
-            log_w("Received mallformed message");
+            log_w("Mallformed message %s", message->toString(20).c_str());
             continue;
         }
 

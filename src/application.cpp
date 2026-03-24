@@ -371,15 +371,12 @@ void Application::loop()
                 }
             }
 
-            if (_state.requestFrame > 0 && Settings::forceRedraw > 0)
+            if (_state.requestFrame > 0 && Settings::forceRedraw > 0 && ++_state.requestFrame - Settings::forceRedrawTimeout > 0)
             {
-                if (++_state.requestFrame % Settings::forceRedraw == 0)
-                {
-                    log_d("Request screen update");
-                    protocol.send(Message::Control(BTN_SCREEN_REFRESH));
-                    if (_state.requestFrame >= Settings::forceRedraw * REDRAW_REQUEST)
-                        _state.requestFrame = 0;
-                }
+                log_d("Request screen update");
+                protocol.send(Message::Control(BTN_SCREEN_REFRESH));
+                if (_state.requestFrame > Settings::forceRedrawTimeout + Settings::forceRedraw)
+                    _state.requestFrame = 0;
             }
         }
 
@@ -478,8 +475,8 @@ const std::string Application::status() const
             if (SDL_GetRendererInfo(renderer, &info) == 0)
             {
                 out << " " << info.name
-                    << ((info.flags & SDL_RENDERER_ACCELERATED) != 0?" accelerated":"")
-                    << ((info.flags & SDL_RENDERER_PRESENTVSYNC) != 0?" vsync":"");
+                    << ((info.flags & SDL_RENDERER_ACCELERATED) != 0 ? " accelerated" : "")
+                    << ((info.flags & SDL_RENDERER_PRESENTVSYNC) != 0 ? " vsync" : "");
             }
         }
     }

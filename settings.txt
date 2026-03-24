@@ -12,13 +12,13 @@
 #height = 576
 
 # Requested image refresh rate
-#source-fps = 50
+#source-fps = 60
 
 # Application drawing target framerate. This can responsiveness.
 # If the setting is lower than source-fps the framse will be dropped
 # If the setting is not multiple of source-fps can still cause frame drops cause out-of-sync
 # source images and drawing times
-#fps = 50
+#fps = 60
 
 # Application window mode
 # 0 - windowed
@@ -108,16 +108,18 @@
 # This is happening or Raspberry Pi Zero 2W. Disable this to use SW decoding for that case.
 #hw-decode = true
 
-# Use double buffering for drawing video. May smooth rendering but increase CPU usage
-#double-buffered = true;
+# Rendeing buffer size, increse for smoothness but can introduce lag. Minimum size is 3
+#rendering-buffer = 5
+
+# Skip several frames on processing events if FPS drops. Can increase responsivenes and reduce lag.
+#draw-skip-events = 3
 
 # Request extra frames onevery key press. Usefull if you do not see last updates after key press
 # Enable for RPI hardware decoding and other systems where hardware decoder tends to buffer frames
 # 0 - disabled, enter number of frames to request (find minimal value that get all screen updates)
+# Combine with force-redraw-timeout to request not imideately but with delay (also find minimal one)
 #force-redraw = 0
-
-# Skip several frames on processing events if FPS drops. Can increase responsivenes and reduce lag.
-#draw-skip-events = 0
+#force-redraw-timeout = 0
 
 # Corrects aspect of UI
 #aspect-correction = 1
@@ -127,18 +129,19 @@
 #renderer-driver = 
 
 # Use alternative video rendering method. May reduce CPU load and increase smoothness.
-#alternative-rendering = true
+#alternative-rendering = false
 
 # Select faster method of scaling image to window size (nearest) or better quality (linear)
 #fast-render-scale = false
 
 # USB read pipeline tuning, number of libusb bulk transfers kept in flight and size of each USB transfer
 # Increase amount of async-usb-calls if you have issues with audio and video lagging behind
-#async-usb-calls = 16
-#usb-buffer-size = 20480
+# If you have mallformed message errors on RPI try to increase async-usb-calls
+#async-usb-calls = 32
+#usb-buffer-size = 2048
 
 # Number of buffered USB data slots queued for processing
-#usb-buffer = 64
+#usb-buffer = 128
 
 # Size of video and audio buffers. Increase if you see artifacts
 #video-buffer-size = 64
@@ -237,3 +240,6 @@
 # Enable FFMPEG AV_CODEC_FLAG2_FAST for HW decoder.
 # Allow non spec compliant speedup tricks.
 #decode-fast = true
+
+# Draw debug info overlay on top of the video output.
+#debug-overlay = false

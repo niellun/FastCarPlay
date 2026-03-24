@@ -299,6 +299,56 @@ public:
     int32_t length() const { return _header.length - _offset; }
     uint8_t *data() const { return _data ? _data + _offset : nullptr; }
 
+    const std::string toString(int count) const 
+    {
+        const char *cmds = "Unknown";
+        for (size_t i = 0; i < sizeof(protocolCmdList) / sizeof(protocolCmdList[0]); ++i)
+        {
+            if (protocolCmdList[i].cmd == static_cast<int>(_header.type))
+            {
+                cmds = protocolCmdList[i].name;
+                break;
+            }
+        }
+
+        char len[32];
+        std::snprintf(len, sizeof(len), "[%d]", _header.length);
+
+        char magic = '!';
+        if (_header.magic == MAGIC)
+            magic = ' ';
+        else if (_header.magic == MAGIC_ENC)
+            magic = '*';
+
+        char check = _header.typecheck == ~_header.type ? '+' : 'x';
+
+        char prefix[64];
+        std::snprintf(prefix, sizeof(prefix), ">%c%c%3u%-8s%-15s",
+                      magic,
+                      check,
+                      static_cast<unsigned>(_header.type),
+                      len,
+                      cmds);
+
+        std::string result(prefix);
+        uint8_t *payload = data();
+        int32_t payloadLength = length();
+
+        if (payload && payloadLength > 0 && count > 0)
+        {
+            int limit = std::min(count, payloadLength);
+            result.reserve(result.size() + static_cast<size_t>(limit));
+
+            for (int i = 0; i < limit; ++i)
+            {
+                char ch = static_cast<char>(payload[i]);
+                result += (ch == '\n' || ch == '\r' || ch < 32 || ch > 126) ? '.' : ch;
+            }
+        }
+
+        return result;
+    }
+
 private:
     static inline void write_uint32_le(uint8_t *dst, uint32_t value)
     {

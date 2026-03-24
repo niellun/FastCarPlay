@@ -46,4 +46,22 @@ inline void pushEvent(Uint32 evt, int code)
     SDL_PushEvent(&event);
 }
 
+#include <sstream>
+#include <iomanip>
+
+inline std::string bytes(uint8_t *data, uint32_t length, uint16_t max)
+{
+    std::ostringstream out;
+
+    if (data && length >= 4)
+    {
+        for (size_t i = 0; (i < length) && (i < max); ++i)
+        {
+            out << std::setw(4) << static_cast<uint32_t>(data[i]);
+        }
+    }
+
+    return out.str();
+}
+
 #endif /* SRC_COMMON_FUNCTIONS */
