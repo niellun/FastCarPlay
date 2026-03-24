@@ -47,13 +47,14 @@ public:
     static inline Setting<bool> alternativeRendering{"alternative-rendering", false};    
     static inline Setting<bool> fastScale{"fast-render-scale", false};
     static inline Setting<int> usbQueue{"async-usb-calls", 16};
-    static inline Setting<int> usbTransferSize{"usb-buffer-size", 2048};         
+    static inline Setting<int> usbTransferSize{"usb-buffer-size", 20480};         
     static inline Setting<int> usbBuffer{"usb-buffer", 64};        
     static inline Setting<int> videoQueue{"video-buffer-size", 64};
     static inline Setting<int> audioQueue{"audio-buffer-size", 64};
     static inline Setting<int> audioDelay{"audio-buffer-wait", 2};
     static inline Setting<int> audioDelayCall{"audio-buffer-wait-call", 6};
     static inline Setting<float> audioFade{"audio-fade", 0.3};
+    static inline Setting<int> audioAuxDelay{"audio-aux-delay", 200};
     static inline Setting<int> audioBuffer{"audio-buffer-samples", 512};
     static inline Setting<std::string> audioDriver{"audio-driver", ""};
     static inline Setting<std::string> onConnect{"on-connect-script", ""};

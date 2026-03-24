@@ -12,7 +12,7 @@
 
 #define FADE_IN_SPEED 0.00001
 #define FADE_OUT_SPEED 0.0001
-#define BUFFER_WAIT_COUNT 5
+#define FADE_ZERO_SEGMENTS 10
 
 struct ChannelConfig
 {
@@ -41,36 +41,27 @@ public:
     void start(AtomicQueue<Message> *data, PcmAudio *fader = nullptr);
     void stop();
 
-    void Fade(bool enble);
-
 private:
-    void runner();
-    void loop(SDL_AudioDeviceID device);
-    void fadecpy(uint8_t *target, uint8_t *source, size_t len);
-
-    static void callback(void *userdata, Uint8 *stream, int len);
+    static ChannelConfig getConfig(const Message *msg);
     static ChannelConfig _configTable[];
-    static ChannelConfig getConfig(int type);
 
-    AtomicQueue<Message> *_data;
-    ChannelConfig _config;
-    int _offset;
-    PcmAudio *_fader;
-    bool _fade;
-    bool _faded;
-    float _volume;
-    float _fadeVolume;
-    bool _underflow;
-    int _underflowCount;
-    int _lastCount;
-    int _prefill;
+    void fade(bool enble);
+    void loop();
+    void play(SDL_AudioDeviceID device, ChannelConfig config, int32_t segmentSize);
+    bool isZero(const Message *msg);
+    void fade(uint8_t *data, int32_t length);
+    bool faded() const { return _volume <= _fadedVolume; }
 
-    std::thread _thread;
-    std::mutex _mtx;
-    std::condition_variable _cv;
-    std::atomic<bool> _paused{false};
-    std::atomic<bool> _active{false};
     std::string _name;
+    PcmAudio *_fader;
+    std::thread _thread;
+    std::atomic<bool> _playing;
+    std::atomic<bool> _active;
+    std::atomic<bool> _fade;
+    ChannelConfig _config;
+    AtomicQueue<Message> *_data;
+    float _volume;
+    float _fadedVolume;
 };
 
 #endif /* SRC_PCM_AUDIO */

@@ -135,7 +135,7 @@
 # USB read pipeline tuning, number of libusb bulk transfers kept in flight and size of each USB transfer
 # Increase amount of async-usb-calls if you have issues with audio and video lagging behind
 #async-usb-calls = 16
-#usb-buffer-size = 2048
+#usb-buffer-size = 20480
 
 # Number of buffered USB data slots queued for processing
 #usb-buffer = 64
@@ -153,6 +153,11 @@
 # This will reduce volume of the music if there is navigation instructions
 # Reduction level from 1 (no reduction) to 0 (fully silenced)
 #audio-fade = 0.3
+
+# Delay navidation audio in milliseconds.
+# Adjust value so navigation guidance do not start before main audio fade out.
+# If you experience audio artifacts with high values increase audio-buffer-size 
+#audio-aux-delay = 200
 
 # Basic number of audio sample frames in the output buffer that is scaled by sample rate.
 # This controls the size of the audio buffer used by the audio device.
