@@ -26,8 +26,8 @@ struct Header
 class Message
 {
 public:
-    Message()
-        : _header({0, 0, 0, 0}), _data(nullptr), _offset(0), _size(0), _encrypt(false)
+    Message(AESCipher *cipher)
+        : _header({0, 0, 0, 0}), _data(nullptr), _offset(0), _size(0), _cipher(cipher), _encrypt(false)
     {
     }
 
@@ -99,51 +99,40 @@ public:
         return true;
     }
 
-    bool valid() const
+    bool encrypt(AESCipher *cipher, char *err = nullptr)
     {
-        if (_header.magic != MAGIC_ENC && _header.magic != MAGIC)
+        if (!_encrypt || _header.magic == MAGIC_ENC)
+            return true;
+
+        if (!cipher)
+            return AESCipher::error(err, "Cipher is not initialised");
+
+        if (!allocated())
+            return AESCipher::error(err, "Message data is not allocated");
+
+        if (!cipher->encrypt(_data, _header.length, err))
             return false;
-        if (_header.typecheck != ~_header.type)
-            return false;
-        if (_header.length < 0 || _header.length > MESSAGE_MAX_PAYLOAD_SIZE)
-            return false;
+
+        _header.magic = MAGIC_ENC;
         return true;
     }
 
-    Status encrypt(AESCipher *cipher)
-    {
-        if (!_encrypt)
-            return Status::Success();
-
-        if (_header.magic == MAGIC_ENC)
-            return Status::Success();
-
-        if (!cipher)
-            return Status::Error("Cipher is not initialised");
-
-        if (!allocated())
-            return Status::Error("Message data is not allocated");
-
-        Status result = cipher->Encrypt(_data, _header.length);
-
-        if (result.succeed())
-            _header.magic = MAGIC_ENC;
-
-        return result;
-    }
-
-    Status decrypt(AESCipher *cipher)
+    bool decrypt(char *err = nullptr)
     {
         if (_header.magic != MAGIC_ENC)
-            return Status::Success();
+            return true;
 
-        if (!cipher)
-            return Status::Error("Cipher is not initialised");
+        if (!_cipher)
+            return AESCipher::error(err, "Cipher is not initialised");
 
         if (!allocated())
-            return Status::Error("Message data is not allocated");
+            return AESCipher::error(err, "Message data is not allocated");
 
-        return cipher->Decrypt(_data, _header.length);
+        if (!_cipher->decrypt(_data, _header.length, err))
+            return false;
+
+        _header.magic = MAGIC;
+        return true;
     }
 
     bool isMotion() const
@@ -299,7 +288,11 @@ public:
     int32_t length() const { return _header.length - _offset; }
     uint8_t *data() const { return _data ? _data + _offset : nullptr; }
 
-    const std::string toString(int count) const 
+    bool invalidMagic() const { return _header.magic != MAGIC_ENC && _header.magic != MAGIC; }
+    bool invalidChecksum() const { return _header.typecheck != ~_header.type; }
+    bool invalidLength() const { return _header.length < 0 || _header.length > MESSAGE_MAX_PAYLOAD_SIZE; }
+
+    const std::string toString(int count) const
     {
         const char *cmds = "Unknown";
         for (size_t i = 0; i < sizeof(protocolCmdList) / sizeof(protocolCmdList[0]); ++i)
@@ -369,6 +362,7 @@ private:
     uint8_t *_data;
     uint32_t _offset;
     uint32_t _size;
+    AESCipher *_cipher;
     bool _encrypt;
 };
 

@@ -172,6 +172,14 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
     {
         // Get raw data segment from queue
         std::unique_ptr<Message> segment = _data->pop();
+        
+        char error[256];
+        if (!segment->decrypt(error))
+        {
+            log_w("Can't decrypt video segment > %s", error);
+            continue;
+        }
+
         uint8_t *data_ptr = segment->data();
         int data_size = segment->length();
 

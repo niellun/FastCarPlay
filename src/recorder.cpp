@@ -9,7 +9,7 @@
 #include "protocol/message.h"
 
 
-Recorder::Recorder(uint16_t buffSize)
+Recorder::Recorder()
     : _queue(nullptr), _active(false), _device(0)
 {
 }

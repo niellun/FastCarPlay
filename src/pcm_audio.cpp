@@ -153,6 +153,14 @@ void PcmAudio::play(SDL_AudioDeviceID device, ChannelConfig config, int32_t segm
         std::unique_ptr<Message> segment = _data->pop();
         if (!segment)
             return;
+
+        char error[256];
+        if (!segment->decrypt(error))
+        {
+            log_w("Can't decrypt audio segment > %s", error);
+            continue;
+        }
+
         if (config != getConfig(segment.get()))
             return;
 

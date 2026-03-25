@@ -4,6 +4,8 @@
 #include <iostream>
 #include <iomanip>
 
+#include "libavcodec/defs.h"
+
 #include "protocol/message.h"
 #include "common/logger.h"
 #include "protocol/protocol_const.h"
@@ -12,19 +14,23 @@
 
 Connection::Connection()
     : writeQueue(WRITE_QUEUE_SIZE),
-      videoStream(Settings::videoQueue),
-      audioStreamMain(Settings::audioQueue),
-      audioStreamAux(Settings::audioQueue),
-      _recorder(Settings::audioQueue),
+      videoStream(VIDEO_QUEUE_SIZE),
+      audioStreamMain(AUDIO_QUEUE_SIZE),
+      audioStreamAux(AUDIO_QUEUE_SIZE),
+      _processQueue(PROCESS_QUEUE_SIZE),
+      _statusHandler(nullptr),
       _cipher(nullptr),
       _context(nullptr),
+      _handler(nullptr),
+      _device(nullptr),
+      _endpointIn(0),
       _active(false),
       _connected(false),
+      _phoneConnected(false),
       _ecnrypt(false),
       _state(PROTOCOL_STATUS_INITIALISING),
       _failCount(0),
-      _nodeviceCount(0),
-      _statusHandler(nullptr)
+      _nodeviceCount(0)
 {
     int result = libusb_init(&_context);
     if (result < 0)
@@ -76,7 +82,7 @@ void Connection::start(atomic<int8_t> *statusHandler)
     log_v("Starting");
 
     _active = true;
-    _thread = std::thread(&Connection::mainLoop, this);
+    _writeThread = std::thread(&Connection::mainLoop, this);
 }
 
 void Connection::stop()
@@ -87,11 +93,18 @@ void Connection::stop()
     log_v("Stopping");
 
     _active = false;
+    _connected = false;
     writeQueue.notify();
     state(PROTOCOL_STATUS_INITIALISING);
 
-    if (_thread.joinable())
-        _thread.join();
+    if (_processThread.joinable())
+        _processThread.join();
+
+    if (_readThread.joinable())
+        _readThread.join();
+
+    if (_writeThread.joinable())
+        _writeThread.join();
 
     _statusHandler = nullptr;
 }
@@ -109,8 +122,8 @@ void Connection::mainLoop()
         libusb_device_handle *handler = libusb_open_device_with_vid_pid(_context, Settings::vendorid, Settings::productid);
         if (handler)
         {
-            uint8_t epIn = 0;
-            uint8_t epOut = 0;
+            uint8_t endpointIn = 0;
+            uint8_t endpointOut = 0;
             int retry = 0;
             libusb_device *device = nullptr;
             _ecnrypt = false;
@@ -118,23 +131,15 @@ void Connection::mainLoop()
 
             while (!device && retry++ < LINK_RETRY)
             {
-                device = link(handler, &epIn, &epOut);
+                device = link(handler, &endpointIn, &endpointOut);
                 writeQueue.waitFor(_active, LINK_RETRY_TIMEOUT);
             }
 
             if (device)
             {
-                _connected = true;
-                state(PROTOCOL_STATUS_ONLINE);
-                log_i("Device connected %d:%d speed: %d", libusb_get_bus_number(device), libusb_get_device_address(device), libusb_get_device_speed(device));
-                _reader.start(_context, handler, epIn, this);
-                onDeviceConnect();
-
-                writeLoop(handler, epOut);
-
-                _connected = false;
+                onDeviceConnect(handler, device, endpointIn);
+                writeLoop(handler, endpointOut);
                 onDeviceDisconnect();
-                _reader.stop();
             }
 
             libusb_release_interface(handler, 0);
@@ -145,9 +150,225 @@ void Connection::mainLoop()
     }
 }
 
+void Connection::onDeviceConnect(libusb_device_handle *handler, libusb_device *device, uint8_t endpointIn)
+{
+    _connected = true;
+    _phoneConnected = false;
+    _handler = handler;
+    _device = device;
+    _endpointIn = endpointIn;
+    state(PROTOCOL_STATUS_ONLINE);
+    log_i("Device connected %d:%d speed: %d", libusb_get_bus_number(device), libusb_get_device_address(device), libusb_get_device_speed(device));
+    writeQueue.clear();
+    videoStream.clear();
+    audioStreamMain.clear();
+    audioStreamAux.clear();
+    _processQueue.clear();
+    _processThread = std::thread(&Connection::processLoop, this);
+    _readThread = std::thread(&Connection::readLoop, this);
+    sendInit();
+}
+
+void Connection::onDeviceDisconnect()
+{
+    log_i("Device disconnected");
+    _connected = false;
+    _processQueue.notify();
+    onPhoneDisconnect();
+}
+
+void Connection::onPhoneConnect()
+{
+    if (_phoneConnected)
+        return;
+    log_i("Phone connected");
+    _phoneConnected = true;
+
+    if (Settings::onConnect.value.length() > 1)
+        execute(Settings::onConnect.value.c_str());
+}
+
+void Connection::onPhoneDisconnect()
+{
+    if (!_phoneConnected)
+        return;
+    log_i("Phone disconnected");
+    _phoneConnected = false;
+
+    _recorder.stop();
+    if (Settings::onDisconnect.value.length() > 1)
+        execute(Settings::onDisconnect.value.c_str());
+}
+
+void Connection::readLoop()
+{
+    setThreadName("usb-read");
+    setThreadPriority(ThreadPriority::Realtime);
+
+    log_d("USB reading thread started");
+
+    while (_connected)
+    {
+        int transferred = 0;
+        std::unique_ptr<Message> message = std::make_unique<Message>(_cipher);
+
+        int result = libusb_bulk_transfer(_handler, _endpointIn, message->header(), message->headerSize(), &transferred, READ_TIMEOUT);
+
+        if (result == LIBUSB_ERROR_NO_DEVICE)
+        {
+            _connected = false;
+            break;
+        }
+
+        if (result != LIBUSB_SUCCESS || transferred != message->headerSize())
+        {
+            if (result != LIBUSB_ERROR_TIMEOUT)
+                log_w("Header read failed > transfered %d / %d status %d", transferred, message->headerSize(), result);
+            continue;
+        }
+
+        if (message->invalidMagic())
+        {
+            log_w("Header read failed > invalid magic");
+            continue;
+        }
+
+        if (message->invalidChecksum())
+        {
+            log_w("Header read failed > invalid checksum");
+            continue;
+        }
+
+        if (message->invalidLength())
+        {
+            log_w("Header read failed > invalid length");
+            continue;
+        }
+
+        if (message->length() > 0)
+        {
+            uint32_t padding = message->type() == CMD_VIDEO_DATA ? AV_INPUT_BUFFER_PADDING_SIZE : 0;
+            uint8_t *buff = message->allocate(padding);
+            if (!buff)
+            {
+                log_w("Message read failed > can't allocate memory %d", message->length() + padding);
+                continue;
+            }
+            result = libusb_bulk_transfer(_handler, _endpointIn, buff, message->length(), &transferred, READ_TIMEOUT);
+
+            if (result == LIBUSB_ERROR_NO_DEVICE)
+            {
+                _connected = false;
+                break;
+            }
+
+            if (result != LIBUSB_SUCCESS || transferred != message->length())
+            {
+                log_w("Message data read failed > transfered %d / %d status %d", transferred, message->length(), result);
+                continue;
+            }
+        }
+
+        if (message->type() == CMD_VIDEO_DATA && message->setOffset(20))
+        {
+            if (!videoStream.pushDiscard(std::move(message)))
+                log_w("Discard message > video queue is full");
+            continue;
+        }
+
+        if (message->type() == CMD_AUDIO_DATA && message->length() > 16)
+        {
+            int channel = message->getInt(8);
+            message->setOffset(12);
+            if (channel == 1)
+            {
+                if (!audioStreamMain.pushDiscard(std::move(message)))
+                    log_w("Discard message > main audio queue is full");
+                continue;
+            }
+            if (channel == 2)
+            {
+                if (!audioStreamAux.pushDiscard(std::move(message)))
+                    log_w("Discard message > aux audio queue is full");
+                continue;
+            }
+        }
+
+        if (!_processQueue.pushDiscard(std::move(message)))
+            log_w("Discard message > process queue is full");
+    }
+
+    log_v("USB reading thread stopped");
+}
+
+void Connection::processLoop()
+{
+    setThreadName("usb-process");
+    log_d("USB processing thread started");
+
+    while (_connected)
+    {
+        if (!_processQueue.wait(_connected))
+            continue;
+        ;
+
+        std::unique_ptr<Message> message = _processQueue.pop();
+        if (!message)
+            continue;
+
+        char error[256];
+        if (!message->decrypt(error))
+        {
+            log_w("Can't decrypt message %d > %s", message->type(), error);
+            continue;
+        }
+
+        switch (message->type())
+        {
+
+        case CMD_CONTROL:
+            if (message->length() == 4)
+            {
+                switch (message->getInt(0))
+                {
+                case 1:
+                    _recorder.start(&writeQueue);
+                    break;
+
+                case 2:
+                    _recorder.stop();
+                    break;
+                }
+            }
+            break;
+
+        case CMD_PLUGGED:
+        {
+            state(PROTOCOL_STATUS_CONNECTED);
+            onPhoneConnect();
+            break;
+        }
+
+        case CMD_UNPLUGGED:
+        {
+            state(PROTOCOL_STATUS_ONLINE);
+            onPhoneDisconnect();
+            break;
+        }
+
+        case CMD_ENCRYPTION:
+            if (message->length() == 0)
+                setEncryption(true);
+            break;
+        }
+    }
+
+    log_v("USB processing thread stopped");
+}
+
 void Connection::writeLoop(libusb_device_handle *handler, uint8_t ep)
 {
-    while (_active && _reader.active())
+    while (_connected)
     {
         std::unique_ptr<Message> message = writeQueue.pop();
         if (!message)
@@ -160,7 +381,7 @@ void Connection::writeLoop(libusb_device_handle *handler, uint8_t ep)
         if (!message)
             message = Message::HeartBeat();
 
-        if (!_active || !_reader.active())
+        if (!_connected)
             break;
 
         if (!message->allocated())
@@ -173,10 +394,10 @@ void Connection::writeLoop(libusb_device_handle *handler, uint8_t ep)
 
         if (_ecnrypt)
         {
-            Status s = message->encrypt(_cipher);
-            if (s.failed())
+            char error[256];
+            if (!message->encrypt(_cipher, error))
             {
-                log_w("Message encryption failed > %s", s.error());
+                log_w("Message encryption failed > %s", error);
                 continue;
             }
         }
@@ -286,7 +507,7 @@ bool Connection::state(u_int8_t state)
     return false;
 }
 
-void Connection::onDeviceConnect()
+void Connection::sendInit()
 {
     int syncTime = std::time(nullptr);
     int drivePosition = Settings::leftDrive ? 0 : 1; // 0==left, 1==right
@@ -329,7 +550,7 @@ void Connection::onDeviceConnect()
     if (Settings::encryption)
     {
         if (_cipher)
-            send(Message::Encryption(_cipher->Seed()));
+            send(Message::Encryption(_cipher->seed()));
         else
             log_w("Can't request encryption > Cypher is not initalised");
     }
@@ -357,81 +578,4 @@ void Connection::onDeviceConnect()
     send(Message::Control(Settings::bluetoothAudio ? 22 : 23));
     if (Settings::autoconnect)
         send(Message::Control(1002));
-}
-
-void Connection::onDeviceDisconnect()
-{
-    _recorder.stop();
-    if (Settings::onDisconnect.value.length() > 1)
-        execute(Settings::onDisconnect.value.c_str());
-}
-
-void Connection::onMessage(std::unique_ptr<Message> message)
-{
-    Status s = message->decrypt(_cipher);
-    if (s.failed())
-    {
-        log_w("Can't decrypt message %d > %s", message->type(), s.error());
-        return;
-    }
-
-    switch (message->type())
-    {
-
-    case CMD_CONTROL:
-        if (message->length() == 4)
-        {
-            switch (message->getInt(0))
-            {
-            case 1:
-                _recorder.start(&writeQueue);
-                break;
-
-            case 2:
-                _recorder.stop();
-                break;
-            }
-        }
-        break;
-
-    case CMD_PLUGGED:
-    {
-        state(PROTOCOL_STATUS_CONNECTED);
-        if (Settings::onConnect.value.length() > 1)
-            execute(Settings::onConnect.value.c_str());
-        break;
-    }
-
-    case CMD_UNPLUGGED:
-    {
-        state(PROTOCOL_STATUS_ONLINE);
-        _recorder.stop();
-        if (Settings::onDisconnect.value.length() > 1)
-            execute(Settings::onDisconnect.value.c_str());
-        break;
-    }
-
-    case CMD_VIDEO_DATA:
-    {
-        if (message->setOffset(20))
-            videoStream.pushDiscard(std::move(message));
-        break;
-    }
-    case CMD_AUDIO_DATA:
-    {
-        if (message->length() <= 16)
-            break;
-        int channel = message->getInt(8);
-        message->setOffset(12);
-        if (channel == 1)
-            audioStreamMain.pushDiscard(std::move(message));
-        if (channel == 2)
-            audioStreamAux.pushDiscard(std::move(message));
-        break;
-    }
-    case CMD_ENCRYPTION:
-        if (message->length() == 0)
-            setEncryption(true);
-        break;
-    }
 }

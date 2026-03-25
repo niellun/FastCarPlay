@@ -12,7 +12,7 @@
 class Recorder
 {
 public:
-    Recorder(uint16_t buffSize);
+    Recorder();
     ~Recorder();
 
     void start(AtomicQueue<Message> *queue);

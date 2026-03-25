@@ -16,11 +16,18 @@ public:
     AESCipher(const std::string &base_key);
     ~AESCipher() = default;
 
-    Status Encrypt(uint8_t *data, uint32_t length) const;
-    Status Decrypt(uint8_t *data, uint32_t length) const;
+    bool encrypt(uint8_t *data, uint32_t length, char *err) const;
+    bool decrypt(uint8_t *data, uint32_t length, char *err) const;
 
-    uint32_t Seed() const { return _seed; }
-    const std::string& Key() const { return _baseKey; }
+    uint32_t seed() const { return _seed; }
+    const std::string& key() const { return _baseKey; }
+
+    static bool error(char* error, const char* message) 
+    {
+        if(error)
+            strcpy(error, message);
+        return false;
+    }
 
 private:
     std::string _baseKey;
