@@ -10,7 +10,7 @@ public:
     Interface(SDL_Renderer *renderer);
     ~Interface();
     bool render(AVFrame *frame);
-    bool drawHome(bool force, int state);
+    bool drawHome(bool force, int state, std::string name);
     void debug(const char *text);
 
 private:
@@ -18,10 +18,7 @@ private:
 
     int _state;
     bool _debug;
-    RendererText _textDongle;
-    RendererText _textInit;
-    RendererText _textConnect;
-    RendererText _textLaunch;
+    RendererText _textStatus;
     RendererText _textDebug;
     RendererImage _mainImage;
     std::string _debugText;

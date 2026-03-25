@@ -263,7 +263,6 @@ void PcmAudio::loop()
 
     if (device != 0)
     {
-        SDL_PauseAudioDevice(device, 1);
         SDL_ClearQueuedAudio(device);
         SDL_CloseAudioDevice(device);
     }

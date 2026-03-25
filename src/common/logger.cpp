@@ -57,8 +57,10 @@ void Logger::vlog(Level level, const char *context, const char *fmt, std::va_lis
     char message[LOGGER_MESSAGE_SIZE];
     std::vsnprintf(message, LOGGER_MESSAGE_SIZE, fmt, args);
 
+    FILE *stream = (level <= Level::Error) ? stderr : stdout;
+
     std::fprintf(
-        (level <= Level::Warning) ? stderr : stdout,
+        stream,
         "%s%s %s[%s] %s%s\n",
         LOGGER_COLOR_GRAY,
         timebuf,
@@ -66,6 +68,8 @@ void Logger::vlog(Level level, const char *context, const char *fmt, std::va_lis
         className(context).c_str(),
         message,
         LOGGER_COLOR_RESET);
+
+    std::fflush(stream);
 }
 
 const char *Logger::levelColor(Level level)
@@ -95,7 +99,8 @@ std::string Logger::className(const char *context)
         return "Global";
 
     std::string signature(context);
-    const std::size_t scopePos = signature.rfind("::");
+    const std::size_t argsPos = signature.find('(');
+    const std::size_t scopePos = signature.rfind("::", argsPos);
     if (scopePos == std::string::npos)
         return "Global";
 

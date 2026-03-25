@@ -1,4 +1,4 @@
-#include "struct/usb_buffer.h"
+#include "protocol/usb_buffer.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -127,6 +127,17 @@ bool UsbBuffer::read(uint8_t *dst, uint32_t length, std::atomic<bool> &active)
     }
 
     return active.load();
+}
+
+void UsbBuffer::discard()
+{
+    if (!_slots[_readSlot].ready.load())
+        return;
+
+    _slots[_readSlot].ready.store(false);
+    _readSlot++;
+    if (_readSlot >= _size)
+        _readSlot = 0;
 }
 
 void UsbBuffer::reset()

@@ -40,6 +40,7 @@ public:
 
     DataSlot *get();
     bool read(uint8_t *dst, uint32_t length, std::atomic<bool> &active);
+    void discard();
 
     void reset();
     void notify();

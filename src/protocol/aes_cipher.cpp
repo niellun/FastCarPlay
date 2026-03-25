@@ -31,52 +31,52 @@ AESCipher::AESCipher(const std::string &baseKey)
     _initVec[12] = static_cast<uint8_t>(_seed >> 24);
 }
 
-Status AESCipher::Encrypt(uint8_t *data, uint32_t length) const
+bool AESCipher::encrypt(uint8_t *data, uint32_t length, char *err) const
 {
     if (!data || length == 0)
-        return Status::Error("Empty data");
+        return error(err, "Empty data");
 
     auto ctx = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
     if (!ctx)
-        return Status::Error("Failed to create cipher context");
+        return error(err, "Failed to create cipher context");
 
     if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_128_cfb(), nullptr, _encKey.data(), _initVec.data()) != 1)
-        return Status::Error("Encryption initialization failed");
+        return error(err, "Encryption initialization failed");
 
     std::unique_ptr<uint8_t[]> temp(new uint8_t[length + AES_BLOCK_SIZE]);
     int out_len = 0;
     if (EVP_EncryptUpdate(ctx.get(), temp.get(), &out_len, data, length) != 1)
-        return Status::Error("Encryption failed during update");
+        return error(err, "Encryption failed during update");
 
     int final_len = 0;
     if (EVP_EncryptFinal_ex(ctx.get(), temp.get() + out_len, &final_len) != 1)
-        return Status::Error("Encryption failed during final");
+        return error(err, "Encryption failed during final");
 
     std::copy_n(temp.get(), length, data);
-    return Status::Success();
+    return true;
 }
 
-Status AESCipher::Decrypt(uint8_t *data, uint32_t length) const
+bool AESCipher::decrypt(uint8_t *data, uint32_t length, char *err) const
 {
     if (!data || length == 0)
-        return Status::Error("Empty data");
+        return error(err, "Empty data");
 
     auto ctx = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
     if (!ctx)
-        return Status::Error("Failed to create cipher context");
+        return error(err, "Failed to create cipher context");
 
     if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_128_cfb(), nullptr, _encKey.data(), _initVec.data()) != 1)
-        return Status::Error(" Decryption initialization failed");
+        return error(err, "Decryption initialization failed");
 
     std::unique_ptr<uint8_t[]> temp(new uint8_t[length + AES_BLOCK_SIZE]);
     int out_len = 0;
     if (EVP_DecryptUpdate(ctx.get(), temp.get(), &out_len, data, length) != 1)
-        return Status::Error("Decryption failed during update");
+        return error(err, "Decryption failed during update");
 
     int final_len = 0;
     if (EVP_DecryptFinal_ex(ctx.get(), temp.get() + out_len, &final_len) != 1)
-        return Status::Error("Decryption failed during final");
+        return error(err, "Decryption failed during final");
 
     std::copy_n(temp.get(), length, data);
-    return Status::Success();
+    return true;
 }

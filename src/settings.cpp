@@ -1,6 +1,7 @@
 #include "settings.h"
 
-#include <iostream>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 
 #include "common/logger.h"
@@ -10,7 +11,7 @@ bool Settings::load(const std::string &filename)
     std::ifstream file(filename);
     if (!file.is_open())
     {
-        log_e( "Cannot open file > %s", filename.c_str());
+        log_e("Cannot open file > %s", filename.c_str());
         return false;
     }
 
@@ -57,7 +58,7 @@ void Settings::print()
 {
     for (ISetting *setting : _settings())
     {
-        log_d("%s = %s",setting->name.c_str(), setting->asString().c_str());
+        log_d("%s = %s", setting->name.c_str(), setting->asString().c_str());
     }
 }
 

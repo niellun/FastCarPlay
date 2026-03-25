@@ -9,10 +9,7 @@ Interface::Interface(SDL_Renderer *renderer)
     : Renderer(renderer),
       _state(0),
       _debug(false),
-      _textDongle(font, font_len, Settings::fontSize),
-      _textInit(font, font_len, Settings::fontSize),
-      _textConnect(font, font_len, Settings::fontSize),
-      _textLaunch(font, font_len, Settings::fontSize),
+      _textStatus(font, font_len, Settings::fontSize),
       _textDebug(font, font_len, 15),
       _mainImage(background, background_len)
 {
@@ -47,7 +44,7 @@ bool Interface::render(AVFrame *frame)
     return true;
 }
 
-bool Interface::drawHome(bool force, int state)
+bool Interface::drawHome(bool force, int state, std::string name)
 {
     if (state == _state && !force)
         return false;
@@ -57,22 +54,34 @@ bool Interface::drawHome(bool force, int state)
     SDL_GetRendererOutputSize(_renderer, &width, &height);
 
     _mainImage.draw(_renderer, width, height);
+    bool drawText = false;
+
     if (state == PROTOCOL_STATUS_ERROR)
-    {
-        if (_textDongle.prepare(_renderer, "Connection error", colorError))
-            _textDongle.draw(_renderer, 0.05 * width, 0.2 * height - _textDongle.height / 2);
-    }
-    else
-    {
-        if (_textDongle.prepare(_renderer, "Insert dongle", state == PROTOCOL_STATUS_NO_DEVICE ? color1 : color1_inactive))
-            _textDongle.draw(_renderer, 0.05 * width, 0.2 * height - _textDongle.height / 2);
-    }
-    if (_textInit.prepare(_renderer, "Initialising", state == PROTOCOL_STATUS_LINKING ? color2 : color2_inactive))
-        _textInit.draw(_renderer, 0.05 * width, 0.4 * height - _textInit.height / 2);
-    if (_textConnect.prepare(_renderer, "Connect phone", state == PROTOCOL_STATUS_ONLINE ? color3 : color3_inactive))
-        _textConnect.draw(_renderer, 0.05 * width, 0.6 * height - _textConnect.height / 2);
-    if (_textLaunch.prepare(_renderer, "Launching", state == PROTOCOL_STATUS_CONNECTED ? color4 : color4_inactive))
-        _textLaunch.draw(_renderer, 0.05 * width, 0.8 * height - _textLaunch.height / 2);
+        if (_textStatus.prepare(_renderer, "Dongle error", colorError))
+            drawText = true;
+
+    if (state == PROTOCOL_STATUS_NO_DEVICE)
+        if (_textStatus.prepare(_renderer, "Insert dongle", colorError))
+            drawText = true;
+
+    if (state == PROTOCOL_STATUS_INITIALISING)
+        if (_textStatus.prepare(_renderer, "Initialising", color2))
+            drawText = true;
+
+    if (state == PROTOCOL_STATUS_LINKING)
+        if (_textStatus.prepare(_renderer, "Initialising", color2))
+            drawText = true;
+
+    if (state == PROTOCOL_STATUS_ONLINE)
+        if (_textStatus.prepare(_renderer, "Connect phone", color4))
+            drawText = true;
+
+    if (state == PROTOCOL_STATUS_CONNECTED)
+        if (_textStatus.prepare(_renderer, "Connecting to "+name, color3))
+            drawText = true;
+
+    if (drawText)
+        _textStatus.draw(_renderer, (width - _textStatus.width) / 2, height * 0.85 - _textStatus.height);
 
     SDL_RenderPresent(_renderer);
     return true;

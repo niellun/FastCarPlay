@@ -4,12 +4,8 @@
 #include <cstring>
 
 #include "protocol/protocol_const.h"
-#include "common/functions.h"
-#include "settings.h"
-#include "protocol/message.h"
 
-
-Recorder::Recorder(uint16_t buffSize)
+Recorder::Recorder()
     : _queue(nullptr), _active(false), _device(0)
 {
 }

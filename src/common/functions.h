@@ -51,17 +51,87 @@ inline void pushEvent(Uint32 evt, int code)
 
 inline std::string bytes(uint8_t *data, uint32_t length, uint16_t max)
 {
-    std::ostringstream out;
+    std::ostringstream oss;
 
-    if (data && length >= 4)
+    if (data && length > 0)
     {
-        for (size_t i = 0; (i < length) && (i < max); ++i)
+        for (uint32_t i = 0; (i < length) && (i < max); ++i)
         {
-            out << std::setw(4) << static_cast<uint32_t>(data[i]);
+            oss << std::setw(4) << static_cast<uint32_t>(data[i]);
         }
     }
 
-    return out.str();
+    return oss.str();
+}
+
+inline std::string ascii(uint8_t *data, uint32_t length)
+{
+    std::ostringstream oss;
+
+    if (data && length > 0)
+    {
+        for (uint32_t i = 0; i < length; ++i)
+        {
+            char ch = static_cast<char>(data[i]);
+            if (ch == '\n' || ch == '\r')
+                oss << '.';
+            else
+                oss << (std::isprint(static_cast<unsigned char>(ch)) ? ch : '.');
+        }
+    }
+
+    return oss.str();
+}
+
+inline bool jsonFindString(const uint8_t *data, int size, const char *key, char *result, int len)
+{
+    const char *p = reinterpret_cast<const char *>(data);
+    const char *end = p + size;
+
+    int keyLen = strlen(key);
+
+    while (p < end)
+    {
+        while (p < end && *p != '"')
+            ++p;
+        if (p >= end)
+            break;
+        ++p;
+
+        if ((end - p) > keyLen &&
+            strncmp(p, key, keyLen) == 0 &&
+            p[keyLen] == '"')
+        {
+            p += keyLen + 1; 
+            while (p < end && isspace((unsigned char)*p))
+                ++p;
+            if (p >= end || *p != ':')
+                continue;
+            ++p; 
+            while (p < end && isspace((unsigned char)*p))
+                ++p;
+            if (p >= end || *p != '"')
+                continue;
+            ++p;
+
+            int i = 0;
+            while (p < end && *p != '"' && i + 1 < len)
+                result[i++] = *p++;
+            result[i] = '\0';
+            return p < end && *p == '"'; 
+        }
+
+        while (p < end && *p != '"')
+        {
+            if (*p == '\\')
+                ++p; 
+            ++p;
+        }
+        if (p < end)
+            ++p;
+    }
+
+    return false;
 }
 
 #endif /* SRC_COMMON_FUNCTIONS */

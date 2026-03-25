@@ -104,7 +104,7 @@ public:
         _lock.notify_all();
     }
 
-    uint16_t count() { return _count.load(std::memory_order_acquire); }
+    uint16_t count() const { return _count.load(std::memory_order_acquire); }
 
 private:
     uint16_t _size;

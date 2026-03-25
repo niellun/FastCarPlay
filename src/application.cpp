@@ -288,7 +288,7 @@ void Application::loop()
 {
     // Prepare home screen
     Interface interface(_renderer);
-    interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN);
+    interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN, "");
 
     // Process full screen, do not do this in headless to avoid blinking
     if (Settings::isFullscreen())
@@ -301,7 +301,7 @@ void Application::loop()
     // Show window, do not do this in headless to avoid blinking
     if (!Settings::isHeadless())
         SDL_ShowWindow(_window);
-    interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN);
+    interface.drawHome(true, PROTOCOL_STATUS_UNKNOWN, "");
 
     Connection protocol;
     Decoder decoder;
@@ -310,7 +310,7 @@ void Application::loop()
     decoder.start(&protocol.videoStream, AV_CODEC_ID_H264);
     audioMain.start(&protocol.audioStreamMain);
     audioAux.start(&protocol.audioStreamAux, &audioMain);
-    protocol.start(&_state.deviceStatus);
+    protocol.start();
 
     log_v("Loop");
     Uint32 frameStart = SDL_GetTicks();
@@ -322,29 +322,32 @@ void Application::loop()
     uint32_t dropframes = 0;
     int skipEvents = 0;
     int frameTime = 0;
+    Uint32 debugLast = SDL_GetTicks();
+    int debugSpeed = 0;
+    int debugLastCount = 0;
     while (_active)
     {
         bool late = false;
 
-        if (_state.deviceStatus != _state.previousdeviceStatus)
+        if (protocol.state() != _state.latestState)
         {
             // On connect/disconnect
-            if (_state.previousdeviceStatus == PROTOCOL_STATUS_CONNECTED || _state.deviceStatus == PROTOCOL_STATUS_CONNECTED)
+            if (protocol.state() == PROTOCOL_STATUS_CONNECTED || _state.latestState == PROTOCOL_STATUS_CONNECTED)
             {
                 _state.frameRendered = false;
                 _state.dirty = true;
                 _state.requestFrame = 0;
             }
             // On connect
-            if (_state.deviceStatus == PROTOCOL_STATUS_CONNECTED)
+            if (protocol.state() == PROTOCOL_STATUS_CONNECTED)
             {
                 decoder.flush();
                 decoder.buffer.reset();
             }
-            _state.previousdeviceStatus = _state.deviceStatus;
+            _state.latestState = protocol.state();
         }
 
-        if (_state.deviceStatus == PROTOCOL_STATUS_CONNECTED && _state.showVideo)
+        if (_state.latestState == PROTOCOL_STATUS_CONNECTED && _state.showVideo)
         {
             delay = 0;
             while (!_state.dirty && decoder.buffer.latestId() == latestFrameid && ++delay < frameTargetTime)
@@ -382,7 +385,7 @@ void Application::loop()
 
         if (!_state.frameRendered || !_state.showVideo)
         {
-            interface.drawHome(_state.dirty, _state.deviceStatus);
+            interface.drawHome(_state.dirty, _state.latestState, protocol.phoneName());
             _state.dirty = false;
             SDL_Event e;
             while (SDL_PollEvent(&e))
@@ -403,14 +406,18 @@ void Application::loop()
 
         if (_debug)
         {
-            char debugBuffer[512];
+            if (SDL_GetTicks() - debugLast >= 1000)
+            {
+                debugSpeed = (protocol.transfered() - debugLastCount) / (SDL_GetTicks() - debugLast);
+                debugLastCount = protocol.transfered();
+                debugLast = SDL_GetTicks();
+            }
+            char debugBuffer[2048];
             std::snprintf(debugBuffer, sizeof(debugBuffer),
                           "%s\n"
                           "FRAME: %u / %u [%d] dropped: %d render: %dms / %dms\n"
-                          "VIDEO: %u\n"
-                          "AUDIO-MAIN: %u\n"
-                          "AUDIO-AUX: %u\n"
-                          "OUT: %u",
+                          "USB: %s ~%dKB/s\n"
+                          "BUFF: video [%u] audio[main %u aux %u] out [%u]",
                           status().c_str(),
                           latestFrameid,
                           decoder.buffer.latestId(),
@@ -418,6 +425,8 @@ void Application::loop()
                           dropframes,
                           frameTime,
                           delay,
+                          protocol.status().c_str(),
+                          debugSpeed,
                           protocol.videoStream.count(),
                           protocol.audioStreamMain.count(),
                           protocol.audioStreamAux.count(),

@@ -9,7 +9,7 @@
 #include "pipe_listener.h"
 #include "settings.h"
 
-static const char *title = "Fast Car Play v0.8";
+static const char *title = "Fast Car Play v0.9";
 
 void start()
 {

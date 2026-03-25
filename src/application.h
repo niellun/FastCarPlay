@@ -27,8 +27,7 @@ private:
         bool showVideo = true;
         bool fullscreen = false;
         bool mouseDown = false;
-        int8_t previousdeviceStatus = PROTOCOL_STATUS_INITIALISING;        
-        atomic<int8_t> deviceStatus = PROTOCOL_STATUS_INITIALISING;
+        int8_t latestState = PROTOCOL_STATUS_UNKNOWN;
     };
 
     bool setAudioDriver();

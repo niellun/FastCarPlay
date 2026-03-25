@@ -8,7 +8,7 @@
 #product-id = 5408 # 0x1520
 
 # Requested image resolution
-#width = 720
+#width = 1024
 #height = 576
 
 # Requested image refresh rate
@@ -98,7 +98,7 @@
 ##############################################################################
 
 # Font size for messgaes on screen. Set to 0 is you do not want any
-#font-size = 30
+#font-size = 40
 
 # Enable vsync. This reduce tearing but can dramatically affect performance on low end systems
 #vsync = false
