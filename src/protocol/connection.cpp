@@ -1,8 +1,8 @@
 #include "connection.h"
 
+#include <algorithm>
 #include <stdexcept>
-#include <iostream>
-#include <iomanip>
+#include <ctime>
 
 #include "libavcodec/defs.h"
 
@@ -220,7 +220,7 @@ void Connection::readLoop()
             break;
         }
 
-        if (result != LIBUSB_SUCCESS || transferred != message->headerSize())
+        if (result != LIBUSB_SUCCESS || transferred != static_cast<int>(message->headerSize()))
         {
             if (result != LIBUSB_ERROR_TIMEOUT)
                 log_w("Header read failed > transfered %d / %d status %d", transferred, message->headerSize(), result);
@@ -310,7 +310,6 @@ void Connection::processLoop()
     {
         if (!_processQueue.wait(_connected))
             continue;
-        ;
 
         std::unique_ptr<Message> message = _processQueue.pop();
         if (!message)

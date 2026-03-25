@@ -1,9 +1,9 @@
 #ifndef SRC_PCM_AUDIO
 #define SRC_PCM_AUDIO
 
-#include <iostream>
-#include <thread>
 #include <atomic>
+#include <string>
+#include <thread>
 
 #include <SDL2/SDL.h>
 

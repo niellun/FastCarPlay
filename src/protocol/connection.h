@@ -5,8 +5,6 @@
 
 #include <atomic>
 #include <thread>
-#include <mutex>
-#include <string>
 
 #include "struct/atomic_queue.h"
 #include "protocol/aes_cipher.h"
@@ -22,7 +20,6 @@
 #define VIDEO_QUEUE_SIZE 128
 #define AUDIO_QUEUE_SIZE 128
 #define PROCESS_QUEUE_SIZE 128
-
 
 #define ENCRYPTION_BASE "SkBRDy3gmrw1ieH0"
 

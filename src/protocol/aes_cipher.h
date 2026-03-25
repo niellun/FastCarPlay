@@ -4,9 +4,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
-
-#include "common/status.h"
 
 class AESCipher
 {
@@ -20,11 +19,11 @@ public:
     bool decrypt(uint8_t *data, uint32_t length, char *err) const;
 
     uint32_t seed() const { return _seed; }
-    const std::string& key() const { return _baseKey; }
+    const std::string &key() const { return _baseKey; }
 
-    static bool error(char* error, const char* message) 
+    static bool error(char *error, const char *message)
     {
-        if(error)
+        if (error)
             strcpy(error, message);
         return false;
     }
