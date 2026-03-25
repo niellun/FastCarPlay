@@ -134,21 +134,8 @@
 # Select faster method of scaling image to window size (nearest) or better quality (linear)
 #fast-render-scale = false
 
-# USB read pipeline tuning, number of libusb bulk transfers kept in flight and size of each USB transfer
-# Increase amount of async-usb-calls if you have issues with audio and video lagging behind
-# If you have mallformed message errors on RPI try to increase async-usb-calls
-#async-usb-calls = 32
-#usb-buffer-size = 2048
-
-# Number of buffered USB data slots queued for processing
-#usb-buffer = 128
-
-# Size of video and audio buffers. Increase if you see artifacts
-#video-buffer-size = 64
-#audio-buffer-size = 64
-
 # Audio delay for music and calls. Fill the buffer to this value before start playing.
-# Increase if you hear audio artifacts or tearing. Should be less than audio-buffer-size
+# Increase if you hear audio artifacts or tearing.
 #audio-buffer-wait = 2
 #audio-buffer-wait-call = 6
 
@@ -159,7 +146,6 @@
 
 # Delay navidation audio in milliseconds.
 # Adjust value so navigation guidance do not start before main audio fade out.
-# If you experience audio artifacts with high values increase audio-buffer-size 
 #audio-aux-delay = 200
 
 # Basic number of audio sample frames in the output buffer that is scaled by sample rate.
