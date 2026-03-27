@@ -14,6 +14,8 @@
 #include "decoder.h"
 #include "pcm_audio.h"
 
+#define MAX_REDRAW_PER_FRAME 4
+
 static KeySetting<int> *keyMap[] = {
     &Settings::keySiri,
     &Settings::keyNightOn,
@@ -199,6 +201,11 @@ bool Application::processSystemEvent(const SDL_Event &e)
         {
             _debug = !_debug;
             return true;
+        }
+        case SDLK_r:
+        {
+            _state.dirty = true;
+            _state.requestFrame = 1;
         }
         }
     }
