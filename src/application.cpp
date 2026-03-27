@@ -490,6 +490,10 @@ const std::string Application::status() const
     }
     out << " " << SDL_GetCurrentAudioDriver();
 
+    out << "BACKENDS:";
+    for (int i = 0; i < SDL_GetNumVideoDrivers(); ++i) 
+        out << " " << SDL_GetVideoDriver(i);
+
     int displayIndex = SDL_GetWindowDisplayIndex(window);
     if (displayIndex >= 0)
     {
