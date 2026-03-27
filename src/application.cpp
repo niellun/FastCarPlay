@@ -377,11 +377,11 @@ void Application::loop()
                 }
             }
 
-            if (_state.requestFrame > 0 && Settings::forceRedraw > 0 && ++_state.requestFrame - Settings::forceRedrawTimeout > 0)
+            if (_state.requestFrame > 0 && Settings::forceRedraw > 0 && _state.requestFrame++ % Settings::forceRedrawTimeout == 0)
             {
                 log_d("Request screen update");
                 protocol.send(Message::Control(BTN_SCREEN_REFRESH));
-                if (_state.requestFrame > Settings::forceRedrawTimeout + Settings::forceRedraw)
+                if (_state.requestFrame > Settings::forceRedrawTimeout*2)
                     _state.requestFrame = 0;
             }
         }
