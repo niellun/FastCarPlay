@@ -87,6 +87,12 @@ bool Interface::drawHome(bool force, int state, std::string name)
     if (drawText)
         _textStatus.draw(_renderer, (width - _textStatus.width) / 2, height * 0.85 - _textStatus.height);
 
+    if (_debug)
+    {
+        drawDebug();
+        _debug = false;
+    }
+
     SDL_RenderPresent(_renderer);
     return true;
 }
