@@ -24,7 +24,6 @@ private:
         bool dirty = false;
         bool frameRendered = false;
         int requestFrame = 0;
-        bool showVideo = true;
         bool fullscreen = false;
         bool mouseDown = false;
         int8_t latestState = PROTOCOL_STATUS_UNKNOWN;

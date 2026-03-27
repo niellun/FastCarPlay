@@ -3,6 +3,8 @@
 #include <SDL2/SDL_ttf.h>
 #include <cstdio>
 #include <sstream>
+#include <chrono>
+#include <thread>
 
 #include "struct/video_buffer.h"
 #include "common/logger.h"
@@ -313,21 +315,20 @@ void Application::loop()
     protocol.start();
 
     log_v("Loop");
-    Uint32 frameStart = SDL_GetTicks();
+    std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
+    int32_t frameTime = 0;
+    int32_t frameDelay = 0;
+    const int32_t frameTarget = Settings::sourceFps > 0 ? 1000000 / Settings::sourceFps : 1000000;
     AVFrame *frame = nullptr;
-    uint32_t frameid = 0;
-    uint32_t latestFrameid = 0;
-    uint32_t frameTargetTime = Settings::fps > 0 ? 1000 / Settings::fps : 1000;
-    uint32_t delay = 0;
+    uint32_t frameId = 0;
     uint32_t dropframes = 0;
     int skipEvents = 0;
-    int frameTime = 0;
     Uint32 debugLast = SDL_GetTicks();
     int debugSpeed = 0;
     int debugLastCount = 0;
     while (_active)
     {
-        bool late = false;
+        bool newFrame = false;
 
         if (protocol.state() != _state.latestState)
         {
@@ -347,29 +348,24 @@ void Application::loop()
             _state.latestState = protocol.state();
         }
 
-        if (_state.latestState == PROTOCOL_STATUS_CONNECTED && _state.showVideo)
+        if (_state.latestState == PROTOCOL_STATUS_CONNECTED)
         {
-            delay = 0;
-            while (!_state.dirty && decoder.buffer.latestId() == latestFrameid && ++delay < frameTargetTime)
+            uint32_t latestFrameId = 0;
+            if (decoder.buffer.consume(&frame, &latestFrameId))
             {
-                SDL_Delay(1);
-            }
-
-            if (decoder.buffer.consume(&frame, &frameid))
-            {
-                bool newFrame = frameid != latestFrameid;
+                newFrame = latestFrameId != frameId;
                 if (newFrame || _state.dirty)
                 {
                     if (interface.render(frame))
                     {
                         _state.frameRendered = true;
                         _state.dirty = false;
-                        if (latestFrameid > 0 && frameid - latestFrameid > 1)
+                        if (frameId > 0 && latestFrameId - frameId > 1)
                         {
-                            dropframes += frameid - latestFrameid - 1;
-                            log_d("Frame drop %d on %d total %d", frameid - latestFrameid - 1, frameid, dropframes);
+                            dropframes += latestFrameId - frameId - 1;
+                            log_d("Frame drop %d on %d total %d", latestFrameId - frameId - 1, latestFrameId, dropframes);
                         }
-                        latestFrameid = frameid;
+                        frameId = latestFrameId;
                     }
                 }
             }
@@ -383,7 +379,7 @@ void Application::loop()
             }
         }
 
-        if (!_state.frameRendered || !_state.showVideo)
+        if (!_state.frameRendered)
         {
             interface.drawHome(_state.dirty, _state.latestState, protocol.phoneName());
             _state.dirty = false;
@@ -393,8 +389,7 @@ void Application::loop()
         }
         else
         {
-            late = decoder.buffer.latestId() - latestFrameid > 1;
-            if (!late || ++skipEvents > Settings::eventsSkip)
+            if (newFrame || ++skipEvents > Settings::eventsSkip)
             {
                 if (processFrameEvents(protocol.writeQueue, interface) && Settings::forceRedraw > 0)
                 {
@@ -415,16 +410,16 @@ void Application::loop()
             char debugBuffer[2048];
             std::snprintf(debugBuffer, sizeof(debugBuffer),
                           "%s\n"
-                          "FRAME: %u / %u [%d] dropped: %d render: %dms / %dms\n"
+                          "FRAME: %u / %u [%d] dropped: %d render: %uus / %uus\n"
                           "USB: %s ~%dKB/s\n"
                           "BUFF: video [%u] audio[main %u aux %u] out [%u]",
                           status().c_str(),
-                          latestFrameid,
+                          frameId,
                           decoder.buffer.latestId(),
-                          decoder.buffer.latestId() - latestFrameid,
+                          decoder.buffer.latestId() - frameId,
                           dropframes,
                           frameTime,
-                          delay,
+                          frameDelay,
                           protocol.status().c_str(),
                           debugSpeed,
                           protocol.videoStream.count(),
@@ -434,19 +429,16 @@ void Application::loop()
             interface.debug(debugBuffer);
         }
 
-        if (_active && !Settings::vsync)
+        if (_active && !Settings::vsync && !_state.dirty)
         {
-            Uint32 frameEnd = SDL_GetTicks();
-            frameTime = frameEnd - frameStart;
-            int frameDelay = frameTargetTime - frameTime;
-            if (frameDelay <= 0 || decoder.buffer.latestId() - latestFrameid > 1)
+            std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+            frameTime = (int32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - frameStart).count();
+            frameDelay = (frameTarget - frameTime) * ((decoder.buffer.latestId() == frameId) ? 1.0 : 0.9);
+            frameStart = now;
+            if (frameDelay > 0)
             {
-                frameStart = frameEnd;
-            }
-            else
-            {
-                SDL_Delay(frameDelay);
-                frameStart += frameDelay;
+                std::this_thread::sleep_for(std::chrono::microseconds(frameDelay));
+                frameStart += std::chrono::microseconds(frameDelay);
             }
         }
     }

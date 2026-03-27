@@ -14,12 +14,6 @@
 # Requested image refresh rate
 #source-fps = 60
 
-# Application drawing target framerate. This can responsiveness.
-# If the setting is lower than source-fps the framse will be dropped
-# If the setting is not multiple of source-fps can still cause frame drops cause out-of-sync
-# source images and drawing times
-#fps = 60
-
 # Application window mode
 # 0 - windowed
 # 1 - fullscreen

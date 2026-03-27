@@ -17,7 +17,6 @@ public:
     static inline Setting<int> width{"width", 1024};
     static inline Setting<int> height{"height", 576};
     static inline Setting<int> sourceFps{"source-fps", 60};
-    static inline Setting<int> fps{"fps", 60};
     static inline Setting<int> screenMode{"window-mode", 0};
     static inline Setting<bool> cursor{"cursor", false};
     static inline Setting<int> loglevel{"log-level", 2};

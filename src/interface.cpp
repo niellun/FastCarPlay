@@ -77,8 +77,12 @@ bool Interface::drawHome(bool force, int state, std::string name)
             drawText = true;
 
     if (state == PROTOCOL_STATUS_CONNECTED)
-        if (_textStatus.prepare(_renderer, "Connecting to "+name, color3))
+    {
+        if(name.length()>0)
+            name = " to "+name;
+        if (_textStatus.prepare(_renderer, "Connecting"+name, color3))
             drawText = true;
+    }
 
     if (drawText)
         _textStatus.draw(_renderer, (width - _textStatus.width) / 2, height * 0.85 - _textStatus.height);
