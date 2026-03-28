@@ -112,7 +112,7 @@ void Interface::drawDebug()
 
     constexpr int padding = 8;
     constexpr int lineSpacing = 2;
-    const SDL_Color debugColor = {0, 255, 255, 255};
+    const SDL_Color debugColor = {255, 255, 255, 255};
     SDL_BlendMode previousBlendMode;
     Uint8 previousR, previousG, previousB, previousA;
     SDL_GetRenderDrawBlendMode(_renderer, &previousBlendMode);
