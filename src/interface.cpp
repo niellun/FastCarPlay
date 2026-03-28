@@ -10,7 +10,7 @@ Interface::Interface(SDL_Renderer *renderer)
       _state(0),
       _debug(false),
       _textStatus(font, font_len, Settings::fontSize),
-      _textDebug(font, font_len, 15),
+      _textDebug(font, font_len, 16),
       _mainImage(background, background_len)
 {
 }
@@ -34,11 +34,13 @@ bool Interface::render(AVFrame *frame)
     (this->*_render)(frame);
     SDL_RenderCopy(_renderer, _texture, &_sourceRect, nullptr);
 
+#ifndef NDEBUG
     if (_debug)
     {
         drawDebug();
         _debug = false;
     }
+#endif
 
     SDL_RenderPresent(_renderer);
     return true;
@@ -85,7 +87,13 @@ bool Interface::drawHome(bool force, int state, std::string name)
     }
 
     if (drawText)
-        _textStatus.draw(_renderer, (width - _textStatus.width) / 2, height * 0.85 - _textStatus.height);
+        _textStatus.draw(_renderer, (width - _textStatus.width * Settings::aspectCorrection) / 2, height * 0.85 - _textStatus.height);
+
+    if (_debug)
+    {
+        drawDebug();
+        _debug = false;
+    }
 
     SDL_RenderPresent(_renderer);
     return true;
@@ -104,7 +112,7 @@ void Interface::drawDebug()
 
     constexpr int padding = 8;
     constexpr int lineSpacing = 2;
-    const SDL_Color debugColor = {0, 255, 255, 255};
+    const SDL_Color debugColor = {255, 255, 255, 255};
     SDL_BlendMode previousBlendMode;
     Uint8 previousR, previousG, previousB, previousA;
     SDL_GetRenderDrawBlendMode(_renderer, &previousBlendMode);

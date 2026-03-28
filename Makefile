@@ -40,8 +40,8 @@ else
 endif
 
 release: BUILD_TYPE := release
-release: CXXFLAGS := -O2 -ffast-math -march=native -fno-plt -fno-rtti -flto -fdata-sections -ffunction-sections -ffunction-sections -fomit-frame-pointer -fvisibility=hidden -pipe -DNDEBUG
-release: LDFLAGS += -O2 -ffast-math -march=native -flto -Wl,-O1 $(PLATFORM_LDFLAGS)
+release: CXXFLAGS := -O2 -ffast-math -march=native -fno-plt -fno-rtti -flto=jobserver -fdata-sections -ffunction-sections -ffunction-sections -fomit-frame-pointer -fvisibility=hidden -pipe -DNDEBUG
+release: LDFLAGS += -O2 -ffast-math -march=native -flto=jobserver -Wl,-O1 $(PLATFORM_LDFLAGS)
 release: TARGET := $(TARGET_NAME)
 release: prepare
 

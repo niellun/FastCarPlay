@@ -132,10 +132,9 @@ SDL_Rect RendererImage::draw(SDL_Renderer *renderer, int w, int h)
         SDL_GetRendererOutputSize(renderer, &width, &height);
     }
 
-    float scale = 1.0 * h / height;
-    int imgw = width * scale * Settings::aspectCorrection;
+    float scale = 1.0 * w / width;
 
-    SDL_Rect dst = {w - imgw, 0, imgw, h};
+    SDL_Rect dst = {0, 0, w, (int)(height*scale)};
     SDL_RenderCopy(renderer, _texture, nullptr, &dst);
     return dst;
 }

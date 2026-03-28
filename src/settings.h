@@ -41,7 +41,6 @@ public:
     static inline Setting<int> renderingBuffer{"rendering-buffer", 5};
     static inline Setting<int> eventsSkip{"draw-skip-events", 3};
     static inline Setting<int> forceRedraw{"force-redraw", 0};
-    static inline Setting<int> forceRedrawTimeout{"force-redraw-timeout", 0};
     static inline Setting<float> aspectCorrection{"aspect-correction", 1};
     static inline Setting<std::string> renderDriver{"renderer-driver", ""};
     static inline Setting<bool> alternativeRendering{"alternative-rendering", false};

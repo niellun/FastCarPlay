@@ -110,10 +110,8 @@
 
 # Request extra frames onevery key press. Usefull if you do not see last updates after key press
 # Enable for RPI hardware decoding and other systems where hardware decoder tends to buffer frames
-# 0 - disabled, enter number of frames to request (find minimal value that get all screen updates)
-# Combine with force-redraw-timeout to request not imideately but with delay (also find minimal one)
+# 0 - disabled, enter number of frames after which the request is made (find minimal value that get all screen updates)
 #force-redraw = 0
-#force-redraw-timeout = 0
 
 # Corrects aspect of UI
 #aspect-correction = 1
