@@ -34,11 +34,13 @@ bool Interface::render(AVFrame *frame)
     (this->*_render)(frame);
     SDL_RenderCopy(_renderer, _texture, &_sourceRect, nullptr);
 
+#ifndef NDEBUG
     if (_debug)
     {
         drawDebug();
         _debug = false;
     }
+#endif
 
     SDL_RenderPresent(_renderer);
     return true;

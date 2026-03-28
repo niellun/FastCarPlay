@@ -197,11 +197,13 @@ bool Application::processSystemEvent(const SDL_Event &e)
             _active = false;
             return true;
         }
+#ifndef NDEBUG
         case SDLK_d:
         {
             _debug = !_debug;
             return true;
         }
+#endif
         case SDLK_r:
         {
             _state.dirty = true;
@@ -330,9 +332,11 @@ void Application::loop()
     uint32_t frameId = 0;
     uint32_t dropframes = 0;
     int skipEvents = 0;
+#ifndef NDEBUG
     Uint32 debugLast = SDL_GetTicks();
     int debugSpeed = 0;
     int debugLastCount = 0;
+#endif
     while (_active)
     {
         bool newFrame = false;
@@ -406,6 +410,7 @@ void Application::loop()
             }
         }
 
+#ifndef NDEBUG
         if (_debug)
         {
             if (SDL_GetTicks() - debugLast >= 1000)
@@ -417,7 +422,7 @@ void Application::loop()
             char debugBuffer[2048];
             std::snprintf(debugBuffer, sizeof(debugBuffer),
                           "%s\n"
-                          "FRAME: %u / %u [%d] dropped: %d render: %uus / %uus\n"
+                          "FRAME: %u / %u [%d] dropped: %d render: %dus / %dus\n"
                           "USB: %s ~%dKB/s\n"
                           "BUFF: video [%u] audio[main %u aux %u] out [%u]",
                           status().c_str(),
@@ -435,6 +440,7 @@ void Application::loop()
                           protocol.writeQueue.count());
             interface.debug(debugBuffer);
         }
+#endif
 
         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         frameTime = (int32_t)std::chrono::duration_cast<std::chrono::microseconds>(now - frameStart).count();
