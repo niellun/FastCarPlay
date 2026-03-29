@@ -9,8 +9,10 @@ Interface::Interface(SDL_Renderer *renderer)
     : Renderer(renderer),
       _state(0),
       _debug(false),
+      _toast(false),
       _textStatus(font, font_len, Settings::fontSize),
       _textDebug(font, font_len, 16),
+      _textToast(font, font_len, Settings::fontSize*0.75),
       _mainImage(background, background_len)
 {
 }
@@ -33,6 +35,9 @@ bool Interface::render(AVFrame *frame)
 
     (this->*_render)(frame);
     SDL_RenderCopy(_renderer, _texture, &_sourceRect, nullptr);
+
+    if (_toast)
+        drawToast();
 
 #ifndef NDEBUG
     if (_debug)
@@ -89,6 +94,9 @@ bool Interface::drawHome(bool force, int state, std::string name)
     if (drawText)
         _textStatus.draw(_renderer, (width - _textStatus.width * Settings::aspectCorrection) / 2, height * 0.85 - _textStatus.height);
 
+    if (_toast)
+        drawToast();
+
     if (_debug)
     {
         drawDebug();
@@ -105,6 +113,18 @@ void Interface::debug(const char *text)
     _debug = true;
 }
 
+void Interface::showToast(const std::string &text)
+{
+    _toastText = text;
+    _toast = true;
+}
+
+void Interface::hideToast()
+{
+    _toastText.clear();
+    _toast = false;
+}
+
 void Interface::drawDebug()
 {
     if (_debugText.empty())
@@ -113,10 +133,6 @@ void Interface::drawDebug()
     constexpr int padding = 8;
     constexpr int lineSpacing = 2;
     const SDL_Color debugColor = {255, 255, 255, 255};
-    SDL_BlendMode previousBlendMode;
-    Uint8 previousR, previousG, previousB, previousA;
-    SDL_GetRenderDrawBlendMode(_renderer, &previousBlendMode);
-    SDL_GetRenderDrawColor(_renderer, &previousR, &previousG, &previousB, &previousA);
     SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 150);
 
@@ -144,7 +160,23 @@ void Interface::drawDebug()
 
         lineStart = lineEnd + 1;
     }
+}
 
-    SDL_SetRenderDrawColor(_renderer, previousR, previousG, previousB, previousA);
-    SDL_SetRenderDrawBlendMode(_renderer, previousBlendMode);
+void Interface::drawToast()
+{
+    if (_toastText.empty())
+        return;
+
+    int padding = Settings::fontSize*0.3;
+    int width, height;
+    SDL_GetRendererOutputSize(_renderer, &width, &height);
+    SDL_SetRenderDrawBlendMode(_renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 150);
+
+    if (_textToast.prepare(_renderer, _toastText, color4))
+    {
+        SDL_Rect backgroundRect = {0, 0, width, _textToast.height + padding * 2};
+        SDL_RenderFillRect(_renderer, &backgroundRect);
+        _textToast.draw(_renderer, (width - _textToast.width * Settings::aspectCorrection) / 2, padding);
+    }
 }

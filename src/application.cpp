@@ -13,13 +13,16 @@
 #include "interface.h"
 #include "decoder.h"
 #include "pcm_audio.h"
+#include "common/functions.h"
 
 static KeySetting<int> *keyMap[] = {
     &Settings::keySiri,
     &Settings::keyNightOn,
     &Settings::keyNightOff,
     &Settings::keyLeft,
+    &Settings::keyLeftExtra,
     &Settings::keyRight,
+    &Settings::keyRightExtra,
     &Settings::keyEnter,
     &Settings::keyEnterUp,
     &Settings::keyBack,
@@ -208,6 +211,47 @@ bool Application::processSystemEvent(const SDL_Event &e)
             _state.requestFrame = 1;
         }
         }
+        bool script = false;
+        std::string name = "";
+        std::string scriptPath = "";
+        if (e.key.keysym.sym == Settings::scriptKey1)
+        {
+            script = true;
+            name = Settings::scriptName1;
+            scriptPath = Settings::script1;
+        }
+        if (e.key.keysym.sym == Settings::scriptKey2)
+        {
+            script = true;
+            name = Settings::scriptName2;
+            scriptPath = Settings::script2;
+        }
+        if (e.key.keysym.sym == Settings::scriptKey3)
+        {
+            script = true;
+            name = Settings::scriptName3;
+            scriptPath = Settings::script3;
+        }
+        if (e.key.keysym.sym == Settings::scriptKey4)
+        {
+            script = true;
+            name = Settings::scriptName4;
+            scriptPath = Settings::script4;
+        }
+
+        if (script)
+        {
+            if (name.length() > 0)
+            {
+                _state.toast = name;
+                _state.showToast = 1;
+            }
+
+            if (scriptPath.length() > 1)
+            {
+                execute(scriptPath.c_str());
+            }
+        }
     }
 
     return false;
@@ -339,6 +383,23 @@ void Application::loop()
     {
         bool newFrame = false;
 
+        if (_state.showToast > 0)
+        {
+            if (_state.showToast == 1)
+            {
+                interface.showToast(_state.toast);
+                _state.showToast = SDL_GetTicks();
+                _state.dirty = true;
+            }
+
+            if (SDL_GetTicks() - _state.showToast >= TOAST_TIME * 1000)
+            {
+                interface.hideToast();
+                _state.showToast = 0;
+                _state.dirty = true;
+            }
+        }
+
         if (protocol.state() != _state.latestState)
         {
             // On connect/disconnect
@@ -383,7 +444,7 @@ void Application::loop()
             {
                 log_d("Request screen update");
                 protocol.send(Message::Control(BTN_SCREEN_REFRESH));
-                if (_state.requestFrame > Settings::forceRedraw*2)
+                if (_state.requestFrame > Settings::forceRedraw * 2)
                     _state.requestFrame = 0;
             }
         }
@@ -498,8 +559,8 @@ const std::string Application::status() const
     {
         SDL_RendererInfo info;
         SDL_GetRenderDriverInfo(i, &info);
-        out << " "; 
-        if(cr.name == info.name)
+        out << " ";
+        if (cr.name == info.name)
             out << "[" << info.name << "]";
         else
             out << info.name;

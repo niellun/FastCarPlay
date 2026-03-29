@@ -58,11 +58,14 @@ public:
     static inline Setting<std::string> onDisconnect{"on-disconnect-script", ""};
 
     // Key mapping section
+    static inline Setting<std::string> keyPipe{"key-pipe-path", ""};
     static inline KeySetting<int> keySiri{"key-siri", 115, 5};
     static inline KeySetting<int> keyNightOn{"key-nightmode-on", 122, 16};
     static inline KeySetting<int> keyNightOff{"key-nightmode-off", 120, 17};
     static inline KeySetting<int> keyLeft{"key-left", 1073741904, 100};
+    static inline KeySetting<int> keyLeftExtra{"key-left-extra", 39, 100};
     static inline KeySetting<int> keyRight{"key-right", 1073741903, 101};
+    static inline KeySetting<int> keyRightExtra{"key-right-extra", 92, 101};
     static inline KeySetting<int> keyEnter{"key-enter", 13, 104};
     static inline KeySetting<int> keyEnterUp{"key-enterup", 0, 105};
     static inline KeySetting<int> keyBack{"key-back", 8, 106};
@@ -80,7 +83,20 @@ public:
     static inline KeySetting<int> keyVideoRelease{"key-video-release", 98, 501};
     static inline KeySetting<int> keyNavFocus{"key-nav-focus", 110, 508};
     static inline KeySetting<int> keyNavRelease{"key-nav-release", 109, 509};
-    static inline Setting<std::string> keyPipe{"key-pipe-path", ""};
+
+    // Custom scripts
+    static inline Setting<std::string> script1{"custom-script-1", ""};
+    static inline Setting<int> scriptKey1{"key-custom-script-1", 49};
+    static inline Setting<std::string> scriptName1{"custom-script-name-1", ""};
+    static inline Setting<std::string> script2{"custom-script-2", ""};
+    static inline Setting<int> scriptKey2{"key-custom-script-2", 50};
+    static inline Setting<std::string> scriptName2{"custom-script-name-2", ""};
+    static inline Setting<std::string> script3{"custom-script-3", ""};
+    static inline Setting<int> scriptKey3{"key-custom-script-3", 51};
+    static inline Setting<std::string> scriptName3{"custom-script-name-3", ""};
+    static inline Setting<std::string> script4{"custom-script-4", ""};
+    static inline Setting<int> scriptKey4{"key-custom-script-4", 52};
+    static inline Setting<std::string> scriptName4{"custom-script-name-4", ""};
 
     // Debug section
     static inline Setting<bool> codecLowDelay{"decode-low-delay", true};

@@ -8,7 +8,7 @@
 #include "protocol/connection.h"
 #include "renderer.h"
 
-#define REDRAW_REQUEST 5
+#define TOAST_TIME 3
 
 class Application
 {
@@ -27,6 +27,8 @@ private:
         bool fullscreen = false;
         bool mouseDown = false;
         int8_t latestState = PROTOCOL_STATUS_UNKNOWN;
+        uint32_t showToast = false;
+        std::string toast = "";
     };
 
     bool setAudioDriver();

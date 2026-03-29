@@ -28,16 +28,19 @@
 #include <signal.h>
 
 #define FIFO_PATH "/tmp/fastcarplay_pipe"
-#define LONG_PRESS 20
+#define WIFI_SCRIPT "/opt/scripts/enable_ap.sh"
+#define LONG_PRESS 40
+#define EXTRA_LONG_PRESS 300
 #define ADS1115_ADDRESS 0x48
-#define FREQUENCY 50
+#define FREQUENCY 100
 
-#define BTN_LEFT 100
-#define BTN_RIGHT 101
-#define BTN_SELECT_DOWN 104
-#define BTN_SELECT_UP 105
-#define BTN_BACK 106
-#define BTN_HOME 200
+#define BTN_LEFT 39
+#define BTN_RIGHT 92
+#define BTN_SELECT_DOWN 13
+#define BTN_SELECT_UP 61
+#define BTN_BACK 8
+#define BTN_HOME 104
+#define WIFI_INFO 49
 
 int fifo_fd = -1;
 std::vector<double> voltages = {2.7, 1.9, 1.15, 0.45};
@@ -120,7 +123,7 @@ void send_key_code(uint8_t i)
 // Callback examples
 void callback0(int button_id, bool long_press)
 {
-    //std::cout << "[Channel 0] Button " << button_id << " pressed. Long press: " << long_press << "\n";
+    // std::cout << "[Channel 0] Button " << button_id << " pressed. Long press: " << long_press << "\n";
     if (button_id == 4)
     {
         if (long_press)
@@ -149,14 +152,20 @@ void callback0(int button_id, bool long_press)
 
 void callback1(int button_id, bool long_press)
 {
-    //std::cout << "[Channel 1] Button " << button_id << " pressed. Long press: " << long_press << "\n";
+    // std::cout << "[Channel 1] Button " << button_id << " pressed. Long press: " << long_press << "\n";
     if (button_id == 3)
     {
-        if (!long_press)
+        if (long_press)
+        {
+            std::cout << "Executing script \n";
+            std::system(WIFI_SCRIPT);
+            send_key_code(WIFI_INFO);
+        }
+        else
         {
             send_key_code(BTN_HOME);
         }
-    }    
+    }
 }
 
 double read_diff(int file_i2c, uint8_t mux)
@@ -198,7 +207,7 @@ int main()
     }
 
     ButtonProcessor proc0(callback0, LONG_PRESS);
-    ButtonProcessor proc1(callback1, LONG_PRESS);
+    ButtonProcessor proc1(callback1, EXTRA_LONG_PRESS);
 
     constexpr double interval = 1.0 / FREQUENCY;
 
@@ -209,8 +218,8 @@ int main()
         auto loop_start = std::chrono::steady_clock::now();
         double v0 = read_diff(file_i2c, 0x04);
         double v1 = read_diff(file_i2c, 0x05);
-        //if(v0<voltages[0] || v1<voltages[0])
-        //    std::cout << "Channel 0: " << v0 << " Channel 1: " << v1;
+        // if(v0<voltages[0] || v1<voltages[0])
+        //     std::cout << "Channel 0: " << v0 << " Channel 1: " << v1;
 
         proc0.process_voltage(v0);
         proc1.process_voltage(v1);

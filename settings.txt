@@ -188,13 +188,22 @@
 # 4. Key mapping
 ##############################################################################
 
+# Path for named pipe that keys are going to be listen on to.
+# If empty pipe listening is disables.
+# Example /tmp/fastcarplay_pipe
+# Keys are byte value [1..255]
+# They are mapped to keys defined above
+#key-pipe-path =
+
 # Map keys to control 
 # If you set log-level and press keys you will see their codes in logs
 #key-siri = 115             # S
 #key-nightmode-on = 122     # Z
 #key-nightmode-off = 120    # X
 #key-left = 1073741904      # Left arrow
+#key-left-extra = 39        # '
 #key-right = 1073741903     # Right arrow
+#key-right-extra = 92       # \
 #key-enter = 13             # Enter
 # For pipe to simulate key up after key-enter press
 #key-enterup = 0            # unmapped by default
@@ -214,15 +223,34 @@
 #key-nav-focus = 110        # N
 #key-nav-release = 109      # M
 
-# Path for named pipe that keys are going to be listen on to.
-# If empty pipe listening is disables.
-# Example /tmp/fastcarplay_pipe
-# Keys are byte value [1..255]
-# They are mapped to keys defined above
-#key-pipe-path =
+##############################################################################
+# 5. Custom scripts
+##############################################################################
+
+# Set custom script to be executed and/or message to be shown when key is pressed
+
+# Custom script 1
+#custom-script-1 =          
+#key-custom-script-1 = 49   # 1
+#custom-script-name-1 =
+
+# Custom script 2
+#custom-script-2 =          
+#key-custom-script-2 = 50   # 2
+#custom-script-name-2 =
+
+# Custom script 3
+#custom-script-3 =          
+#key-custom-script-3 = 51   # 3
+#custom-script-name-3 =
+
+# Custom script 4
+#custom-script-4 =          
+#key-custom-script-4 = 52   # 4
+#custom-script-name-4 =
 
 ##############################################################################
-# 5.Debug
+# 6.Debug
 ##############################################################################
 
 # Enable FFMPEG AV_CODEC_FLAG_LOW_DELAY for HW decoder.
