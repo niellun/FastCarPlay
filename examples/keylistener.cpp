@@ -195,14 +195,24 @@ double read_diff(int file_i2c, uint8_t mux)
     return static_cast<double>(value) * 4.096 / 32768.0;
 }
 
+bool running = true;
+
+void signal_handler(int signum) {
+    running = false;
+}
+
 int main()
 {
     signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE globally
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
     int file_i2c = open("/dev/i2c-1", O_RDWR);
     if (file_i2c < 0 || ioctl(file_i2c, I2C_SLAVE, ADS1115_ADDRESS) < 0)
     {
         std::cerr << "Failed to open I2C device\n";
+        std::cout << "Executing script \n";
+        std::system(WIFI_SCRIPT);
         return 1;
     }
 
@@ -213,7 +223,7 @@ int main()
 
     std::cout << "Keylistener started with fifo " << FIFO_PATH << "\n";
 
-    while (true)
+    while (running)
     {
         auto loop_start = std::chrono::steady_clock::now();
         double v0 = read_diff(file_i2c, 0x04);
