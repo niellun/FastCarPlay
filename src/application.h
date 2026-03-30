@@ -6,6 +6,7 @@
 #include "protocol/protocol_const.h"
 
 #include "protocol/connection.h"
+#include "pipe_listener.h"
 #include "renderer.h"
 
 #define TOAST_TIME 3
@@ -41,6 +42,7 @@ private:
 
     SDL_Window *_window;
     SDL_Renderer *_renderer;
+    PipeListener *_keyListener;
     bool _active;
     SDL_DisplayMode _displayMode;
     State _state;

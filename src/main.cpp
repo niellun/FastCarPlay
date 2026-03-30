@@ -6,7 +6,6 @@
 #include "common/logger.h"
 
 #include "application.h"
-#include "pipe_listener.h"
 #include "settings.h"
 
 static const char *title = "Fast Car Play v0.9";
@@ -15,9 +14,6 @@ void start()
 {
     set_log_level(Settings::loglevel);
     Settings::print();
-
-    if (Settings::keyPipe.value.length() > 2)
-        PipeListener pipeListener(Settings::keyPipe.value.c_str());
 
     Application app;
     app.start(title);

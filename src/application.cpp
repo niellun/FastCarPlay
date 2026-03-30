@@ -45,6 +45,7 @@ static constexpr size_t keyMapSize = sizeof(keyMap) / sizeof(keyMap[0]);
 
 Application::Application(/* args */) : _window(nullptr),
                                        _renderer(nullptr),
+                                       _keyListener(nullptr),
                                        _active(true)
 {
     log_v("Creating");
@@ -76,6 +77,11 @@ Application::Application(/* args */) : _window(nullptr),
 Application::~Application()
 {
     log_v("Destroying");
+    if (_keyListener != nullptr)
+    {
+        delete _keyListener;
+        _keyListener = nullptr;
+    }
     if (_renderer != nullptr)
         SDL_DestroyRenderer(_renderer);
     if (_window != nullptr)
@@ -359,6 +365,9 @@ void Application::loop()
     Connection protocol;
     Decoder decoder;
     PcmAudio audioMain("main"), audioAux("aux");
+
+    if (Settings::keyPipe.value.length() > 2)
+        _keyListener = new PipeListener(Settings::keyPipe.value.c_str());
 
     decoder.start(&protocol.videoStream, AV_CODEC_ID_H264);
     audioMain.start(&protocol.audioStreamMain);
