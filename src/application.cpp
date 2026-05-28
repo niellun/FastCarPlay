@@ -265,82 +265,148 @@ bool Application::processSystemEvent(const SDL_Event &e)
 
 bool Application::processFrameEvents(AtomicQueue<Message> &queue, Renderer &renderer)
 {
-    bool result = false;
-    SDL_Event e;
-    bool motion = false;
-    int motionX = 0;
-    int motionY = 0;
-    int downX = -1;
-    int downY = -1;
-    int upX = -1;
-    int upY = -1;
+    // Since no cursor is available in headless and this touch method will be borked in windowed mode, we'll use touch when running headless
+    if (Settings::isHeadless()) {
+        bool result = false;
+        SDL_Event e;
 
-    while (SDL_PollEvent(&e))
-    {
-        if (processSystemEvent(e))
-            continue;
+        while (SDL_PollEvent(&e))
+        {
+            if (processSystemEvent(e))
+                continue;
 
-        switch (e.type)
-        {
-
-        case SDL_MOUSEBUTTONDOWN:
-        {
-            _state.mouseDown = true;
-            downX = e.button.x;
-            downY = e.button.y;
-            break;
-        }
-
-        case SDL_MOUSEBUTTONUP:
-        {
-            _state.mouseDown = false;
-            upX = e.button.x;
-            upY = e.button.y;
-            result = true;
-            break;
-        }
-        case SDL_MOUSEMOTION:
-        {
-            if (!_state.mouseDown)
-                break;
-            motionX = e.motion.x;
-            motionY = e.motion.y;
-            motion = true;
-            break;
-        }
-        case SDL_KEYDOWN:
-        {
-            int key = processKey(e.key.keysym);
-            if (key > 0)
+            // Touch notifications are normalized whereas mouse ones are not
+            switch (e.type)
             {
-                queue.pushDiscard(Message::Control(key));
-                result = true;
+                case SDL_FINGERDOWN:
+                {
+                    _state.mouseDown = true;
+                    if (_state.frameRendered)
+                        queue.pushDiscard(Message::Click(renderer.xScale * e.tfinger.x, renderer.yScale * e.tfinger.y, true));
+                    break;
+                }
+
+                case SDL_FINGERUP:
+                {
+                    _state.mouseDown = false;
+                    if (_state.frameRendered)
+                        queue.pushDiscard(Message::Click(renderer.xScale * e.tfinger.x, renderer.yScale * e.tfinger.y, false));
+                    result = true;
+                    break;
+                }
+
+                case SDL_FINGERMOTION:
+                {
+                    if (!_state.mouseDown)
+                        break;
+                        
+                    if (_state.frameRendered)
+                        queue.pushDiscard(Message::Move(renderer.xScale * e.tfinger.x, renderer.yScale * e.tfinger.y));
+
+                    break;
+                }
+
+                case SDL_KEYDOWN:
+                {
+                    int key = processKey(e.key.keysym);
+                    if (key > 0)
+                    {
+                        queue.pushDiscard(Message::Control(key));
+                        result = true;
+                    }
+                    break;
+                }
+
+                case SDL_KEYUP:
+                {
+                    if (e.key.keysym.sym == Settings::keyEnter)
+                    {
+                        queue.pushDiscard(Message::Control(Settings::keyEnterUp.key));
+                        result = true;
+                    }
+                    break;
+                }
             }
-            break;
         }
-        case SDL_KEYUP:
+
+        return result;
+    } else {
+        bool result = false;
+        SDL_Event e;
+        bool motion = false;
+        int motionX = 0;
+        int motionY = 0;
+        int downX = -1;
+        int downY = -1;
+        int upX = -1;
+        int upY = -1;
+
+        while (SDL_PollEvent(&e))
         {
-            if (e.key.keysym.sym == Settings::keyEnter)
+            if (processSystemEvent(e))
+                continue;
+
+            switch (e.type)
             {
-                queue.pushDiscard(Message::Control(Settings::keyEnterUp.key));
-                result = true;
+                case SDL_MOUSEBUTTONDOWN:
+                {
+                    _state.mouseDown = true;
+                    downX = e.button.x;
+                    downY = e.button.y;
+                    break;
+                }
+
+                case SDL_MOUSEBUTTONUP:
+                {
+                    _state.mouseDown = false;
+                    upX = e.button.x;
+                    upY = e.button.y;
+                    result = true;
+                    break;
+                }
+                case SDL_MOUSEMOTION:
+                {
+                    if (!_state.mouseDown)
+                        break;
+                    motionX = e.motion.x;
+                    motionY = e.motion.y;
+                    motion = true;
+                    break;
+                }
+                case SDL_KEYDOWN:
+                {
+                    int key = processKey(e.key.keysym);
+                    if (key > 0)
+                    {
+                        queue.pushDiscard(Message::Control(key));
+                        result = true;
+                    }
+                    break;
+                }
+                case SDL_KEYUP:
+                {
+                    if (e.key.keysym.sym == Settings::keyEnter)
+                    {
+                        queue.pushDiscard(Message::Control(Settings::keyEnterUp.key));
+                        result = true;
+                    }
+                    break;
+                }
             }
-            break;
         }
+
+        if (_state.frameRendered && (downX >= 0 || upX >= 0 || motion))
+        {
+            if (downX >= 0)
+                queue.pushDiscard(Message::Click(renderer.xScale * downX / _width, renderer.yScale * downY / _height, true));
+            if (motion)
+                queue.pushDiscard(Message::Move(renderer.xScale * motionX / _width, renderer.yScale * motionY / _height));
+            if (upX >= 0)
+                queue.pushDiscard(Message::Click(renderer.xScale * upX / _width, renderer.yScale * upY / _height, false));
         }
-    }
 
-    if (_state.frameRendered && (downX >= 0 || upX >= 0 || motion))
-    {
-        if (downX >= 0)
-            queue.pushDiscard(Message::Click(renderer.xScale * downX / _width, renderer.yScale * downY / _height, true));
-        if (motion)
-            queue.pushDiscard(Message::Move(renderer.xScale * motionX / _width, renderer.yScale * motionY / _height));
-        if (upX >= 0)
-            queue.pushDiscard(Message::Click(renderer.xScale * upX / _width, renderer.yScale * upY / _height, false));
+        return result;
     }
-
-    return result;
 }
 
 void Application::loop()
