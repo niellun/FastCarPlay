@@ -9,6 +9,7 @@ Decoder::Decoder()
     : buffer(Settings::renderingBuffer),
       _context(nullptr),
       _active(false),
+      _flushRequest(false),
       _data(nullptr)
 {
 }
@@ -42,8 +43,12 @@ void Decoder::stop()
 
 void Decoder::flush()
 {
-    if (_context)
-        avcodec_flush_buffers(_context);
+    // libav contexts are not thread safe: the decoder thread may be inside
+    // avcodec_send_packet/avcodec_receive_frame on the same context, so only
+    // request the flush here and let the decoding loop perform it.
+    _flushRequest.store(true, std::memory_order_release);
+    if (_data)
+        _data->notify();
 }
 
 // Initialize and select the best decoder (try HW first, then SW)
@@ -170,6 +175,10 @@ void Decoder::loop(AVCodecContext *context, AVCodecParserContext *parser, AVPack
     // Main decoding loop; runs until global_quit flag is set
     while (_data->wait(_active))
     {
+        // Perform a requested flush here, on the thread that owns the context
+        if (_flushRequest.exchange(false, std::memory_order_acq_rel))
+            avcodec_flush_buffers(context);
+
         // Get raw data segment from queue
         std::unique_ptr<Message> segment = _data->pop();
         uint8_t *data_ptr = segment->data();
