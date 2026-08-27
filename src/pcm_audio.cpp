@@ -72,11 +72,26 @@ ChannelConfig PcmAudio::getConfig(const Message *msg)
 
 bool PcmAudio::isZero(const Message *msg)
 {
-    const uint64_t *p = (const uint64_t *)msg->data();
-    int n = msg->length() / 8;
-    for (int i = 0; i < n; ++i)
+    // The payload offset gives no alignment guarantee and unaligned wide
+    // loads fault on ARMv6, so align to 4 bytes before scanning by word.
+    const uint8_t *p = msg->data();
+    int n = msg->length();
+    while (n > 0 && ((uintptr_t)p & 3))
     {
-        if (p[i] != 0)
+        if (*p++)
+            return false;
+        --n;
+    }
+    const uint32_t *w = (const uint32_t *)p;
+    for (; n >= 4; n -= 4)
+    {
+        if (*w++)
+            return false;
+    }
+    p = (const uint8_t *)w;
+    for (; n > 0; --n)
+    {
+        if (*p++)
             return false;
     }
     return true;
