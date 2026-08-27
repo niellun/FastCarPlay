@@ -35,6 +35,7 @@ private:
     AVCodecContext* _context;
     AVCodecID _codecId;
     std::atomic<bool> _active;
+    std::atomic<bool> _flushRequest;
     AtomicQueue<Message> *_data;
 };
 
