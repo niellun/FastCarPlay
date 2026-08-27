@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 DataSlot::DataSlot()
-    : ready(false), offset(0), length(0), size(0), data(nullptr), _cv(nullptr)
+    : ready(false), offset(0), length(0), size(0), data(nullptr), _cv(nullptr), _mtx(nullptr)
 {
 }
 
@@ -19,7 +19,7 @@ DataSlot::~DataSlot()
     }
 }
 
-void DataSlot::init(uint32_t slotSize, std::condition_variable *condition)
+void DataSlot::init(uint32_t slotSize, std::condition_variable *condition, std::mutex *mutex)
 {
     ready.store(false);
     offset = 0;
@@ -27,6 +27,7 @@ void DataSlot::init(uint32_t slotSize, std::condition_variable *condition)
     size = slotSize;
     data = static_cast<uint8_t *>(malloc(size));
     _cv = condition;
+    _mtx = mutex;
 }
 
 void DataSlot::reset()
@@ -43,7 +44,15 @@ void DataSlot::commit(size_t dataSize)
     ready.store(true);
 
     if (_cv)
+    {
+        // Empty critical section orders this wake-up against the reader's
+        // predicate evaluation in UsbBuffer::read, preventing lost wake-ups.
+        if (_mtx)
+        {
+            std::lock_guard<std::mutex> guard(*_mtx);
+        }
         _cv->notify_one();
+    }
 }
 
 bool DataSlot::consume(size_t dataSize)
@@ -70,7 +79,7 @@ UsbBuffer::UsbBuffer(uint16_t slotCount, uint32_t slotSize)
 
     for (uint16_t i = 0; i < _size; i++)
     {
-        _slots[i].init(slotSize, &_cv);
+        _slots[i].init(slotSize, &_cv, &_mutex);
     }
 }
 
@@ -152,6 +161,8 @@ void UsbBuffer::reset()
 
 void UsbBuffer::notify()
 {
+    // See DataSlot::commit - pairs the wake-up with read()'s predicate check.
+    { std::lock_guard<std::mutex> guard(_mutex); }
     _cv.notify_all();
 }
 
