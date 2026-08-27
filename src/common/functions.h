@@ -1,11 +1,15 @@
 #ifndef SRC_COMMON_FUNCTIONS
 #define SRC_COMMON_FUNCTIONS
 
+#include <cerrno>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <SDL2/SDL.h>
 
@@ -23,7 +27,25 @@ inline void execute(const char *path)
         throw std::invalid_argument("Program path cannot be empty");
     }
 
-    std::system(path);
+    // Detached double-fork: never blocks the calling thread, no zombies
+    // (std::system would stall the render loop until the script exits).
+    pid_t pid = fork();
+    if (pid < 0)
+        return;
+    if (pid == 0)
+    {
+        if (fork() == 0)
+        {
+            setsid();
+            signal(SIGPIPE, SIG_DFL); // don't leak the app's SIG_IGN into user scripts
+            execl("/bin/sh", "sh", "-c", path, (char *)nullptr);
+            _exit(127);
+        }
+        _exit(0);
+    }
+    while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR)
+    {
+    }
 }
 
 inline const std::string avErrorText(int code)
