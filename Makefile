@@ -59,9 +59,15 @@ $(TARGET): $(OBJS)
 	$(CXX) $(LDFLAGS) $(OBJS) -o $(TARGET) $(LDOPTIONS)
 	@echo "Build complete: $(TARGET)"
 
+# -MMD writes a .d file per object listing every header it includes, and the
+# -include below feeds them back in, so editing a header rebuilds its users.
+# Without this, objects built against an old header layout get linked next to
+# fresh ones and corrupt memory at runtime.
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXCOMMON) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXCOMMON) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+-include $(OBJS:.o=.d)
 
 clean:
 	@rm -rf $(OUT_DIR)
