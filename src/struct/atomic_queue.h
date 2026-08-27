@@ -32,7 +32,7 @@ public:
         _first = (_first + 1) % _size;
         _data[_first] = std::move(obj);
         _count.fetch_add(1, std::memory_order_release);
-        _lock.notify_one();
+        wake();
         return true;
     }
 
@@ -47,7 +47,7 @@ public:
         _first = (_first + 1) % _size;
         _data[_first] = std::move(obj);
         _count.fetch_add(1, std::memory_order_release);
-        _lock.notify_one();
+        wake();
         return true;
     }
 
@@ -101,12 +101,23 @@ public:
 
     void notify()
     {
+        // Lock/unlock pairs this notify with any waiter's predicate check,
+        // closing the missed-wakeup window (waiter between predicate and block).
+        { lock_guard<std::mutex> guard(_mtx); }
         _lock.notify_all();
     }
 
     uint16_t count() const { return _count.load(std::memory_order_acquire); }
 
 private:
+    void wake()
+    {
+        // See notify(): empty critical section orders this wake-up against
+        // the waiter's predicate evaluation, preventing lost wake-ups.
+        { lock_guard<std::mutex> guard(_mtx); }
+        _lock.notify_one();
+    }
+
     uint16_t _size;
     unique_ptr<unique_ptr<T>[]> _data;
     uint16_t _first;

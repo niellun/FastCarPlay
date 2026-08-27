@@ -13,7 +13,7 @@ public:
     DataSlot();
     ~DataSlot();
 
-    void init(uint32_t slotSize, std::condition_variable *condition);
+    void init(uint32_t slotSize, std::condition_variable *condition, std::mutex *mutex);
     void reset();
     void commit(size_t dataSize);
     bool consume(size_t dataSize);
@@ -27,6 +27,7 @@ public:
 
 private:
     std::condition_variable *_cv;
+    std::mutex *_mtx;
 };
 
 class UsbBuffer
