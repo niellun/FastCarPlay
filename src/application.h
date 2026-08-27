@@ -1,6 +1,8 @@
 #ifndef SRC_APPLICATION
 #define SRC_APPLICATION
 
+#include <atomic>
+
 #include <SDL2/SDL.h>
 
 #include "protocol/protocol_const.h"
@@ -18,6 +20,9 @@ public:
     ~Application();
 
     void start(const char *title);
+
+    // Requests a clean shutdown; safe to call from a signal handler
+    void stop() { _active.store(false, std::memory_order_release); }
 
 private:
     struct State
@@ -43,7 +48,7 @@ private:
     SDL_Window *_window;
     SDL_Renderer *_renderer;
     PipeListener *_keyListener;
-    bool _active;
+    std::atomic<bool> _active;
     SDL_DisplayMode _displayMode;
     State _state;
     int _width;

@@ -1,6 +1,8 @@
 #include <string>
 #include <iostream>
 #include <memory>
+#include <atomic>
+#include <csignal>
 
 #include "common/functions.h"
 #include "common/logger.h"
@@ -10,12 +12,40 @@
 
 static const char *title = "Fast Car Play v0.9";
 
+static std::atomic<Application *> g_app{nullptr};
+
+static void onStopSignal(int)
+{
+    // async-signal-safe: lock-free atomic load + atomic store only
+    Application *app = g_app.load(std::memory_order_acquire);
+    if (app)
+        app->stop();
+}
+
+static void installSignalHandlers()
+{
+    struct sigaction sa = {};
+    sa.sa_handler = onStopSignal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGTERM, &sa, nullptr);
+    sigaction(SIGINT, &sa, nullptr);
+    signal(SIGPIPE, SIG_IGN);
+}
+
 void start()
 {
     set_log_level(Settings::loglevel);
     Settings::print();
 
     Application app;
+    // Guard declared after app: it resets g_app BEFORE app is destroyed,
+    // including on the exception paths out of app.start()
+    struct Guard
+    {
+        ~Guard() { g_app.store(nullptr, std::memory_order_release); }
+    } guard;
+    g_app.store(&app, std::memory_order_release);
+    installSignalHandlers();
     app.start(title);
 }
 
