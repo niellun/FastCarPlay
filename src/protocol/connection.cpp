@@ -314,6 +314,7 @@ void Connection::onPhoneDisconnect()
     if (Settings::onDisconnect.value.length() > 1)
         execute(Settings::onDisconnect.value.c_str());
 
+    std::lock_guard<std::mutex> lock(_nameMutex);
     _method = "unknown";
     _phoneName = "phone";
 }
@@ -639,9 +640,15 @@ void Connection::onMessage(std::unique_ptr<Message> message)
         char buf[64];
         log_d("Controll message %d [%d] > %s", message->type(), message->length(), ascii(message->data(), message->length()).c_str());
         if (jsonFindString(message->data(), message->length(), "MDLinkType", buf, 64))
+        {
+            std::lock_guard<std::mutex> lock(_nameMutex);
             _method = buf;
+        }
         if (jsonFindString(message->data(), message->length(), "btName", buf, 64))
+        {
+            std::lock_guard<std::mutex> lock(_nameMutex);
             _phoneName = buf;
+        }
         return;
     }
 
@@ -659,8 +666,12 @@ const std::string Connection::status() const
         << static_cast<int>(version->micro) << '.'
         << static_cast<int>(version->nano) << " "
         << " queue " << _processQueue.count() << " / " << Settings::usbBuffer << " "
-        << (_ecnrypt.load(std::memory_order_acquire) ? "encrypt" : "simple") << " "
-        << _phoneName << " via " << _method;
+        << (_ecnrypt.load(std::memory_order_acquire) ? "encrypt" : "simple") << " ";
+
+    {
+        std::lock_guard<std::mutex> lock(_nameMutex);
+        out << _phoneName << " via " << _method;
+    }
 
     return out.str();
 }

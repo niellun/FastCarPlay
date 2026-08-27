@@ -4,6 +4,7 @@
 #include <libusb-1.0/libusb.h>
 
 #include <atomic>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -39,8 +40,19 @@ public:
     uint32_t transfered() const { return _transfered.load(std::memory_order_acquire); }
 
     int8_t state() const { return _state.load(); }
-    std::string connectionMethod() const { return _method; }
-    std::string phoneName() const { return _phoneName; }
+    // _method/_phoneName are reassigned by the process thread while other
+    // threads copy them; copying a std::string during reassignment is a
+    // use-after-free, so every access goes through _nameMutex.
+    std::string connectionMethod() const
+    {
+        std::lock_guard<std::mutex> lock(_nameMutex);
+        return _method;
+    }
+    std::string phoneName() const
+    {
+        std::lock_guard<std::mutex> lock(_nameMutex);
+        return _phoneName;
+    }
     const std::string status() const;
 
     AtomicQueue<Message> writeQueue;
@@ -88,6 +100,7 @@ private:
     std::atomic<bool> _ecnrypt;
     std::atomic<int8_t> _state;
 
+    mutable std::mutex _nameMutex; // guards _method and _phoneName
     std::string _method;
     std::string _phoneName;
     std::atomic<uint32_t> _transfered;
